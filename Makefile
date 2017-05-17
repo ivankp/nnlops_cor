@@ -9,7 +9,7 @@ EXE := test cov
 all: $(EXE)
 
 $(EXE): %: src/%.cc include/timed_counter.hh
-	$(CXX) -std=c++14 -Wall -g -Iinclude -fmax-errors=3 \
+	$(CXX) -std=c++14 -Wall -O3 -flto -Iinclude -fmax-errors=3 \
 	  $(ROOT_CFLAGS) \
 	  $(filter %.cc,$^) -o $@ \
 	  $(ROOT_LIBS) -lTreePlayer
@@ -17,4 +17,3 @@ $(EXE): %: src/%.cc include/timed_counter.hh
 clean:
 	@rm -fv $(EXE)
 
-# $(CXX) -std=c++14 -Wall -O3 -flto -Iinclude -fmax-errors=3 \
