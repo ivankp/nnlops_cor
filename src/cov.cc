@@ -18,18 +18,35 @@ struct hist_bin {
   std::vector<double> w;
   void operator++() {
     if (!n) w = weights;
-    ++n;
-    for (size_t i=weights.size(); i; ) { --i;
+    else for (size_t i=weights.size(); i; ) {
+      --i;
       w[i] += weights[i];
     }
+    ++n;
   }
   static std::vector<double> weights;
 };
 std::vector<double> hist_bin::weights;
 
-template <typename A>
 using hist = ivanp::binner<hist_bin, std::tuple<
-  ivanp::axis_spec<ivanp::container_axis<std::vector<A>>>>>;
+  ivanp::axis_spec<ivanp::container_axis<std::vector<double>>>>>;
+
+TH1D* th1(const ivanp::named_ptr<hist>& hp, unsigned w) {
+  TH1D *h = new TH1D(hp.name.c_str(),"",
+    hp->axis().nbins(), hp->axis().edges().data() );
+
+  unsigned n = 0;
+  const auto& bins = hp->bins();
+  for (unsigned i=0; i<bins.size(); ++i) {
+    const auto& b = bins[i];
+    if (!b.n) continue;
+    (*h)[i] = b.w.at(w);
+    n += b.n;
+  }
+  h->SetEntries(n);
+
+  return h;
+}
 
 using std::cout;
 using std::cerr;
@@ -56,12 +73,12 @@ int main(int argc, char* argv[]) {
   TTreeReaderArray<double> _w_qcd(reader,"w_qcd");
   TTreeReaderArray<double> _w_qcd_nnlops(reader,"w_qcd_nnlops");
 
-  hist<Int_t>    h_N_j_30({ 0,1,2,3,4 });
-  hist<Double_t> h_pT_yy({ 0.,20.,30.,45.,60.,80.,120.,170.,220.,350. });
-  hist<Double_t> h_pT_j1_30({ 30.,40.,55.,75.,95.,120.,170.,400. });
-  hist<Double_t> h_m_jj_30({ 0.,200.,500.,1000. });
-  hist<Double_t> h_Dphi_j_j_30({ 0.,1.0472,2.0944,3.1416 });
-  hist<Double_t> h_Dphi_j_j_30_signed({ -3.1416,-1.5708,0.,1.5708,3.1416 });
+  hist h_N_j_30("N_j_30",{ 0.,1.,2.,3.,4. });
+  hist h_pT_yy("pT_yy",{ 0.,20.,30.,45.,60.,80.,120.,170.,220.,350. });
+  hist h_pT_j1_30("pT_j1_30",{ 30.,40.,55.,75.,95.,120.,170.,400. });
+  hist h_m_jj_30("m_jj_30",{ 0.,200.,500.,1000. });
+  hist h_Dphi_j_j_30("Dphi_j_j_30",{ 0.,1.0472,2.0944,3.1416 });
+  hist h_Dphi_j_j_30_signed("Dphi_j_j_30_signed",{ -3.1416,-1.5708,0.,1.5708,3.1416 });
 
   using tc = ivanp::timed_counter<Long64_t>;
   for (tc ent(reader.GetEntries(true)); reader.Next(); ++ent) {
@@ -86,6 +103,8 @@ int main(int argc, char* argv[]) {
 
     if (N_j_30 < 2) continue; // 2 jets =============================
 
+    cout << hist_bin::weights[0] << endl;
+
     h_m_jj_30(*_m_jj_30*1e-3);
     h_Dphi_j_j_30(*_Dphi_j_j_30);
     h_Dphi_j_j_30_signed(*_Dphi_j_j_30_signed);
@@ -93,18 +112,7 @@ int main(int argc, char* argv[]) {
 
   TFile f(argv[1],"recreate");
 
-  TH1D *out_h_pT_yy = new TH1D("pT_yy","",
-    h_pT_yy.axis().nbins(), h_pT_yy.axis().edges().data() );
-
-  unsigned n = 0;
-  for (const auto& b : h_pT_yy.bins()) {
-    static int i = 0;
-    if (!b.n) continue;
-    (*out_h_pT_yy)[i] = b.w.at(0);
-    n += b.n;
-    ++i;
-  }
-  out_h_pT_yy->SetEntries(n);
+  for (const auto& h : hist::all) th1(h,0);
 
   f.Write();
 

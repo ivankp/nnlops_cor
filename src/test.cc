@@ -31,7 +31,8 @@ int main(int argc, char* argv[]) {
 
   TTreeReader reader(&chain);
 
-  TTreeReaderValue<Int_t> _N_j_30(reader,"N_j_30");
+  TTreeReaderValue<Bool_t>  _isFiducial(reader,"isFiducial");
+  TTreeReaderValue<Int_t>   _N_j_30(reader,"N_j_30");
   TTreeReaderValue<Float_t> _pT_yy(reader,"pT_yy");
   TTreeReaderValue<Float_t> _pT_j1_30(reader,"pT_j1_30");
   TTreeReaderValue<Float_t> _m_jj_30(reader,"m_jj_30");
@@ -50,6 +51,8 @@ int main(int argc, char* argv[]) {
 
   using tc = ivanp::timed_counter<Long64_t>;
   for (tc ent(reader.GetEntries(true)); reader.Next(); ++ent) {
+    if (!*_isFiducial) continue;
+
     const double w_nominal = *_w_nominal;
     const Int_t N_j_30 = *_N_j_30;
 
@@ -61,6 +64,8 @@ int main(int argc, char* argv[]) {
     h_pT_j1_30->Fill(*_pT_j1_30*1e-3,w_nominal);
 
     if (N_j_30 < 2) continue; // 2 jets =============================
+
+    cout << w_nominal << endl;
 
     h_m_jj_30->Fill(*_m_jj_30*1e-3,w_nominal);
     h_Dphi_j_j_30->Fill(*_Dphi_j_j_30,w_nominal);
