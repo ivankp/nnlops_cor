@@ -25,6 +25,11 @@ const double b_Dphi_j_j_30_signed[] = { -3.1416,-1.5708,0,1.5708,3.1416 };
     std::extent<decltype(b_##NAME)>::value-1,b_##NAME);
 
 int main(int argc, char* argv[]) {
+  if (argc<3) {
+    cout << "usage: " << argv[0] << " out.root in1.root ..." << endl;
+    return 1;
+  }
+
   TChain chain("tree");
   for (int i=2; i<argc; ++i)
     if (!chain.Add(argv[i],0)) return 1;
@@ -64,8 +69,6 @@ int main(int argc, char* argv[]) {
     h_pT_j1_30->Fill(*_pT_j1_30*1e-3,w_nominal);
 
     if (N_j_30 < 2) continue; // 2 jets =============================
-
-    cout << w_nominal << endl;
 
     h_m_jj_30->Fill(*_m_jj_30*1e-3,w_nominal);
     h_Dphi_j_j_30->Fill(*_Dphi_j_j_30,w_nominal);

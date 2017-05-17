@@ -11,8 +11,6 @@
 #include "timed_counter.hh"
 #include "binner.hh"
 
-template <typename... T> struct bad_type;
-
 struct hist_bin {
   unsigned n = 0;
   std::vector<double> w;
@@ -53,6 +51,11 @@ using std::cerr;
 using std::endl;
 
 int main(int argc, char* argv[]) {
+  if (argc<3) {
+    cout << "usage: " << argv[0] << " out.root in1.root ..." << endl;
+    return 1;
+  }
+
   TChain chain("tree");
   for (int i=2; i<argc; ++i)
     if (!chain.Add(argv[i],0)) return 1;
@@ -81,16 +84,17 @@ int main(int argc, char* argv[]) {
   hist h_Dphi_j_j_30_signed("Dphi_j_j_30_signed",{ -3.1416,-1.5708,0.,1.5708,3.1416 });
 
   using tc = ivanp::timed_counter<Long64_t>;
-  for (tc ent(reader.GetEntries(true)); reader.Next(); ++ent) {
+  for (tc ent(reader.GetEntries(true)); reader.Next(); ++ent) { // LOOP
     if (!*_isFiducial) continue;
 
-    // Read the weights
+    // Read the weights ---------------------------------------------
     hist_bin::weights.clear();
     hist_bin::weights.push_back(*_w_nominal);
     for (const double w : _w_pdf4lhc_unc) hist_bin::weights.push_back(w);
     for (const double w : _w_nnpdf30_unc) hist_bin::weights.push_back(w);
     for (const double w : _w_qcd)         hist_bin::weights.push_back(w);
     for (const double w : _w_qcd_nnlops)  hist_bin::weights.push_back(w);
+    // --------------------------------------------------------------
 
     const Int_t N_j_30 = *_N_j_30;
 
@@ -103,12 +107,10 @@ int main(int argc, char* argv[]) {
 
     if (N_j_30 < 2) continue; // 2 jets =============================
 
-    cout << hist_bin::weights[0] << endl;
-
     h_m_jj_30(*_m_jj_30*1e-3);
     h_Dphi_j_j_30(*_Dphi_j_j_30);
     h_Dphi_j_j_30_signed(*_Dphi_j_j_30_signed);
-  }
+  } // end event loop
 
   TFile f(argv[1],"recreate");
 
