@@ -1,5 +1,7 @@
 #include <iostream>
 #include <vector>
+#include <algorithm>
+#include <stdexcept>
 
 #include <TFile.h>
 #include <TChain.h>
@@ -44,6 +46,54 @@ TH1D* th1(const ivanp::named_ptr<hist>& hp, unsigned w) {
   h->SetEntries(n);
 
   return h;
+}
+
+template <typename T>
+class sym_mat { // symmetric matrix
+  std::vector<T> mat;
+  static constexpr unsigned N(unsigned n) { return n*(n+1) >> 1; }
+public:
+  sym_mat(const std::vector<T>& vec) {
+    const unsigned n = vec.size();
+    unsigned k = 0;
+    mat.resize(N(n));
+    for (unsigned i=0; i<n; ++i) { // (i >= j)
+      for (unsigned j=n; j<=i; ++j) {
+        mat[k] = vec[i]*vec[j];
+        ++k;
+      }
+    }
+  }
+  template <typename Indexable, typename Pred>
+  sym_mat(const Indexable& xx, Pred f) {
+    const unsigned n = xx.size();
+    unsigned k = 0;
+    mat.resize(N(n));
+    for (unsigned i=0; i<n; ++i) { // (i >= j)
+      for (unsigned j=n; j<=i; ++j) {
+        mat[k] = f(xx[i])*f(xx[j]);
+        ++k;
+      }
+    }
+  }
+  const T& operator()(unsigned i, unsigned j) const {
+    if (j>i) std::swap(i,j);
+    return mat[N(i)+j];
+  }
+  sym_mat& operator+=(const sym_mat& rhs) {
+    if (mat.size()!=rhs.mat.size()) throw std::length_error(
+      "adding sym_mat of unequal size");
+    for (unsigned i=mat.size(); i; ) { --i;
+      mat[i] += rhs.mat[i];
+    }
+    return *this;
+  }
+};
+
+sym_mat<double> cov(const hist& h, unsigned i) {
+  return { h.bins(),
+    [i](const hist_bin& bin){ return bin.w[i]-bin.w[0]; } // err_i
+  };
 }
 
 using std::cout;
@@ -101,19 +151,33 @@ int main(int argc, char* argv[]) {
     h_N_j_30(N_j_30);
     h_pT_yy(*_pT_yy*1e-3);
 
-    if (N_j_30 < 1) continue; // 1 jet ==============================
+    if (N_j_30 < 1) continue; // 1 jet ******************************
 
     h_pT_j1_30(*_pT_j1_30*1e-3);
 
-    if (N_j_30 < 2) continue; // 2 jets =============================
+    if (N_j_30 < 2) continue; // 2 jets *****************************
 
     h_m_jj_30(*_m_jj_30*1e-3);
     h_Dphi_j_j_30(*_Dphi_j_j_30);
     h_Dphi_j_j_30_signed(*_Dphi_j_j_30_signed);
   } // end event loop
 
+  //
+  // sym_mat<double> cov_pT_yy_w1(h_pT_yy.bins(),
+  //   [](const hist_bin& bin){ return bin.w[1]; });
+  // for (unsigned i=2, n=_w_pdf4lhc_unc.GetSize()+1; i<n; ++i)
+  //   cov_pT_yy_w1 += sym_mat<double>(h_pT_yy.bins(),
+  //     [i](const hist_bin& bin){ return bin.w[i]; });
+
+  auto cov_pT_yy = cov(h_pT_yy,1);
+  for (unsigned i=2, n=_w_pdf4lhc_unc.GetSize()+1; i<n; ++i)
+    cov_pT_yy += cov(h_pT_yy,i);
+
+  // Output =========================================================
+
   TFile f(argv[1],"recreate");
 
+  // Save nominal histograms
   for (const auto& h : hist::all) th1(h,0);
 
   f.Write();
