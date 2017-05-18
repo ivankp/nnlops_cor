@@ -8,6 +8,8 @@ EXE := test cov
 
 all: $(EXE)
 
+cov: src/mat.hh
+
 $(EXE): %: src/%.cc include/timed_counter.hh
 	$(CXX) -std=c++14 -Wall -O3 -flto -Iinclude -fmax-errors=3 \
 	  $(ROOT_CFLAGS) \

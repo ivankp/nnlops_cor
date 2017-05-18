@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
@@ -9,9 +10,21 @@
 #include <TTreeReader.h>
 #include <TTreeReaderValue.h>
 #include <TTreeReaderArray.h>
+#include <TParameter.h>
 
 #include "timed_counter.hh"
+#include "catstr.hh"
 #include "binner.hh"
+#include "mat.hh"
+
+using std::cout;
+using std::cerr;
+using std::endl;
+
+template <typename T>
+const auto& get_param(TFile* f, const char* name) {
+  return *dynamic_cast<const TParameter<T>*>(f->Get(name));
+}
 
 struct hist_bin {
   unsigned n = 0;
@@ -29,18 +42,21 @@ struct hist_bin {
 std::vector<double> hist_bin::weights;
 
 using hist = ivanp::binner<hist_bin, std::tuple<
-  ivanp::axis_spec<ivanp::container_axis<std::vector<double>>>>>;
+  ivanp::axis_spec<ivanp::container_axis<std::vector<double>>,0,0>>>;
 
 TH1D* th1(const ivanp::named_ptr<hist>& hp, unsigned w) {
-  TH1D *h = new TH1D(hp.name.c_str(),"",
-    hp->axis().nbins(), hp->axis().edges().data() );
+  const auto& hax = hp->axis();
+  TH1D *h = new TH1D(hp.name.c_str(),"", hax.nbins(), 0, 1 );
+    // hp->axis().nbins(), hp->axis().edges().data() );
+  TAxis *ax = h->GetXaxis();
 
   unsigned n = 0;
   const auto& bins = hp->bins();
-  for (unsigned i=0; i<bins.size(); ++i) {
-    const auto& b = bins[i];
+  for (unsigned i=1; i<=bins.size(); ++i) {
+    const auto& b = bins[i-1];
     if (!b.n) continue;
     (*h)[i] = b.w.at(w);
+    ax->SetBinLabel(i,cat('[',hax.lower(i),',',hax.upper(i),')').c_str());
     n += b.n;
   }
   h->SetEntries(n);
@@ -48,57 +64,12 @@ TH1D* th1(const ivanp::named_ptr<hist>& hp, unsigned w) {
   return h;
 }
 
-template <typename T>
-class sym_mat { // symmetric matrix
-  std::vector<T> mat;
-  static constexpr unsigned N(unsigned n) { return n*(n+1) >> 1; }
-public:
-  sym_mat(const std::vector<T>& vec) {
-    const unsigned n = vec.size();
-    unsigned k = 0;
-    mat.resize(N(n));
-    for (unsigned i=0; i<n; ++i) { // (i >= j)
-      for (unsigned j=n; j<=i; ++j) {
-        mat[k] = vec[i]*vec[j];
-        ++k;
-      }
-    }
-  }
-  template <typename Indexable, typename Pred>
-  sym_mat(const Indexable& xx, Pred f) {
-    const unsigned n = xx.size();
-    unsigned k = 0;
-    mat.resize(N(n));
-    for (unsigned i=0; i<n; ++i) { // (i >= j)
-      for (unsigned j=n; j<=i; ++j) {
-        mat[k] = f(xx[i])*f(xx[j]);
-        ++k;
-      }
-    }
-  }
-  const T& operator()(unsigned i, unsigned j) const {
-    if (j>i) std::swap(i,j);
-    return mat[N(i)+j];
-  }
-  sym_mat& operator+=(const sym_mat& rhs) {
-    if (mat.size()!=rhs.mat.size()) throw std::length_error(
-      "adding sym_mat of unequal size");
-    for (unsigned i=mat.size(); i; ) { --i;
-      mat[i] += rhs.mat[i];
-    }
-    return *this;
-  }
-};
-
 sym_mat<double> cov(const hist& h, unsigned i) {
-  return { h.bins(),
-    [i](const hist_bin& bin){ return bin.w[i]-bin.w[0]; } // err_i
+  return { h.bins(), [i](const hist_bin& bin){
+      return bin.n ? bin.w.at(i)-bin.w[0] : 0.; // err_i
+    }
   };
 }
-
-using std::cout;
-using std::cerr;
-using std::endl;
 
 int main(int argc, char* argv[]) {
   if (argc<3) {
@@ -109,6 +80,11 @@ int main(int argc, char* argv[]) {
   TChain chain("tree");
   for (int i=2; i<argc; ++i)
     if (!chain.Add(argv[i],0)) return 1;
+
+  cout << '\n';
+  const auto& xs_br_fe =
+    get_param<double>(chain.GetFile(),"crossSectionBRfilterEff");
+  cout << xs_br_fe.GetName() << " = " << xs_br_fe.GetVal() <<'\n'<< endl;
 
   TTreeReader reader(&chain);
 
@@ -126,17 +102,17 @@ int main(int argc, char* argv[]) {
   TTreeReaderArray<double> _w_qcd(reader,"w_qcd");
   TTreeReaderArray<double> _w_qcd_nnlops(reader,"w_qcd_nnlops");
 
-  hist h_N_j_30("N_j_30",{ 0.,1.,2.,3.,4. });
-  hist h_pT_yy("pT_yy",{ 0.,20.,30.,45.,60.,80.,120.,170.,220.,350. });
-  hist h_pT_j1_30("pT_j1_30",{ 30.,40.,55.,75.,95.,120.,170.,400. });
-  hist h_m_jj_30("m_jj_30",{ 0.,200.,500.,1000. });
-  hist h_Dphi_j_j_30("Dphi_j_j_30",{ 0.,1.0472,2.0944,3.1416 });
-  hist h_Dphi_j_j_30_signed("Dphi_j_j_30_signed",{ -3.1416,-1.5708,0.,1.5708,3.1416 });
+  hist h_N_j_30("N_j_30",{ 0.,1.,2.,3.,9999. });
+  hist h_pT_yy("pT_yy",{0.,20.,30.,45.,60.,80.,120.,170.,220.,350.,99999.});
+  hist h_pT_j1_30("pT_j1_30",{-100.,30.,55.,75.,120.,350.,99999.});
+  hist h_m_jj_30("m_jj_30",{-100.,0.,170.,500.,1500.,99999.});
+  hist h_Dphi_j_j_30("Dphi_j_j_30",{-100.,0.,1.0472,2.0944,3.15});
+  hist h_Dphi_j_j_30_signed("Dphi_j_j_30_signed",{-100.,-3.15,-1.570796,0.,1.570796,3.15});
+
+  std::vector<double> total_weight;
 
   using tc = ivanp::timed_counter<Long64_t>;
   for (tc ent(reader.GetEntries(true)); reader.Next(); ++ent) { // LOOP
-    if (!*_isFiducial) continue;
-
     // Read the weights ---------------------------------------------
     hist_bin::weights.clear();
     hist_bin::weights.push_back(*_w_nominal);
@@ -146,32 +122,50 @@ int main(int argc, char* argv[]) {
     for (const double w : _w_qcd_nnlops)  hist_bin::weights.push_back(w);
     // --------------------------------------------------------------
 
+    if (total_weight.size()==0) total_weight = hist_bin::weights;
+    else for (unsigned i=total_weight.size(); i; ) { --i;
+      total_weight[i] += hist_bin::weights[i];
+    }
+
+    if (!*_isFiducial) continue;
+
     const Int_t N_j_30 = *_N_j_30;
 
     h_N_j_30(N_j_30);
     h_pT_yy(*_pT_yy*1e-3);
-
-    if (N_j_30 < 1) continue; // 1 jet ******************************
-
     h_pT_j1_30(*_pT_j1_30*1e-3);
-
-    if (N_j_30 < 2) continue; // 2 jets *****************************
-
     h_m_jj_30(*_m_jj_30*1e-3);
     h_Dphi_j_j_30(*_Dphi_j_j_30);
     h_Dphi_j_j_30_signed(*_Dphi_j_j_30_signed);
+
   } // end event loop
+  cout << '\n';
 
-  //
-  // sym_mat<double> cov_pT_yy_w1(h_pT_yy.bins(),
-  //   [](const hist_bin& bin){ return bin.w[1]; });
-  // for (unsigned i=2, n=_w_pdf4lhc_unc.GetSize()+1; i<n; ++i)
-  //   cov_pT_yy_w1 += sym_mat<double>(h_pT_yy.bins(),
-  //     [i](const hist_bin& bin){ return bin.w[i]; });
+  cout << "Total nominal weight: " << total_weight[0] << endl;
 
+  // scale histograms to cross section
+  for (const auto& h : hist::all) {
+    for (auto& b : h->bins()) {
+      for (unsigned i=total_weight.size(); i; ) { --i;
+        b.w[i] *= (xs_br_fe.GetVal() / total_weight[i]);
+      }
+    }
+  }
+
+  // construct covariance matrices
   auto cov_pT_yy = cov(h_pT_yy,1);
   for (unsigned i=2, n=_w_pdf4lhc_unc.GetSize()+1; i<n; ++i)
     cov_pT_yy += cov(h_pT_yy,i);
+
+  // construct correlation matrices
+  const auto corr_pT_yy = corr(cov_pT_yy);
+
+  cout << '\n';
+  for (double s : corr_pT_yy.stdev)
+    cout << s << endl;
+  cout << endl;
+  for (double c : corr_pT_yy.corr.mat)
+    cout << c << endl;
 
   // Output =========================================================
 
