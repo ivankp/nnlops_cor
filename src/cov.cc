@@ -102,12 +102,12 @@ int main(int argc, char* argv[]) {
   TTreeReaderArray<double> _w_qcd(reader,"w_qcd");
   TTreeReaderArray<double> _w_qcd_nnlops(reader,"w_qcd_nnlops");
 
-  hist h_N_j_30("N_j_30",{ 0.,1.,2.,3.,9999. });
   hist h_pT_yy("pT_yy",{0.,20.,30.,45.,60.,80.,120.,170.,220.,350.,99999.});
+  hist h_N_j_30("N_j_30",{ 0.,1.,2.,3.,9999. });
+  hist h_m_jj_30("m_jj_30",{0.,170.,500.,1500.,99999.});
+  hist h_Dphi_j_j_30("Dphi_j_j_30",{0.,1.0472,2.0944,3.15});
+  hist h_Dphi_j_j_30_signed("Dphi_j_j_30_signed",{-3.15,-1.570796,0.,1.570796,3.15});
   hist h_pT_j1_30("pT_j1_30",{30.,55.,75.,120.,350.,99999.});
-  hist h_m_jj_30("m_jj_30",{-100.,0.,170.,500.,1500.,99999.});
-  hist h_Dphi_j_j_30("Dphi_j_j_30",{-100.,0.,1.0472,2.0944,3.15});
-  hist h_Dphi_j_j_30_signed("Dphi_j_j_30_signed",{-100.,-3.15,-1.570796,0.,1.570796,3.15});
 
   std::vector<double> total_weight;
 
@@ -146,6 +146,8 @@ int main(int argc, char* argv[]) {
 
   // Output =========================================================
 
+  std::vector<std::vector<double>> bins(total_weight.size());
+
   TFile f(argv[1],"recreate");
 
   for (const auto& h : hist::all) {
@@ -160,19 +162,25 @@ int main(int argc, char* argv[]) {
     // Save nominal histograms
     th1(h,0);
 
-    // construct covariance matrices
-    auto cov_pT_yy = cov(h_pT_yy,1);
+    // construct covariance matrix for this histogram
+    auto m_cov = cov(*h,1);
     for (unsigned i=2, n=_w_pdf4lhc_unc.GetSize()+1; i<n; ++i)
-      cov_pT_yy += cov(h_pT_yy,i);
+      m_cov += cov(*h,i);
 
-    // construct correlation matrices
-    const auto cor_pT_yy = cor(cov_pT_yy);
+    // construct correlation matrix for this histogram
+    const auto m_cor = cor(m_cov);
 
     cout << "\nstandard deviations\n";
-    for (double s : cor_pT_yy.stdev)
-      cout << s << endl;
+    std::ostream sci(cout.rdbuf());
+    sci << std::scientific << std::setprecision(3);
+    for (double s : m_cor.stdev) sci << s << endl;
     cout << "\ncorrelation matrix\n";
-    cout << cor_pT_yy.cor << endl;
+    cout << m_cor.cor << endl;
+
+    // join histograms
+    for (unsigned i=1; i<total_weight.size(); ++i)
+      for (auto& b : h->bins())
+        bins[i].push_back(b.w[i]-b.w[0]);
   }
 
   f.Write();

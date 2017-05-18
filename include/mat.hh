@@ -1,6 +1,10 @@
 #ifndef MAT_HH
 #define MAT_HH
 
+#include <iostream>
+#include <iomanip>
+#include <cmath>
+
 template <typename T>
 class lt_mat { // lower triangular matrix
   unsigned _n;
@@ -29,6 +33,16 @@ class sym_mat { // symmetric matrix
   static constexpr unsigned N(unsigned n) { return n*(n+1) >> 1; }
 public:
   std::vector<T> mat;
+  template <typename Indexable>
+  sym_mat(const Indexable& xx): _n(xx.size()), mat(N(_n)) {
+    unsigned k = 0;
+    for (unsigned i=0; i<_n; ++i) { // (i >= j)
+      for (unsigned j=0; j<=i; ++j) {
+        mat[k] = xx[i]*xx[j];
+        ++k;
+      }
+    }
+  }
   template <typename Indexable, typename Pred>
   sym_mat(const Indexable& xx, Pred f): _n(xx.size()), mat(N(_n)) {
     unsigned k = 0;

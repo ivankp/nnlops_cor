@@ -4,11 +4,12 @@ ROOT_LIBS   := $(shell root-config --libs)
 
 .PHONY: all clean
 
-EXE := test cov
+EXE := cov test_hist test_cov
 
-all: $(EXE)
+all: cov
+test: test_hist test_cov
 
-cov: src/mat.hh
+cov test_cov: include/mat.hh
 
 $(EXE): %: src/%.cc include/timed_counter.hh
 	$(CXX) -std=c++14 -Wall -O3 -flto -Iinclude -fmax-errors=3 \
