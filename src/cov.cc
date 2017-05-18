@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
 
   hist h_N_j_30("N_j_30",{ 0.,1.,2.,3.,9999. });
   hist h_pT_yy("pT_yy",{0.,20.,30.,45.,60.,80.,120.,170.,220.,350.,99999.});
-  hist h_pT_j1_30("pT_j1_30",{-100.,30.,55.,75.,120.,350.,99999.});
+  hist h_pT_j1_30("pT_j1_30",{30.,55.,75.,120.,350.,99999.});
   hist h_m_jj_30("m_jj_30",{-100.,0.,170.,500.,1500.,99999.});
   hist h_Dphi_j_j_30("Dphi_j_j_30",{-100.,0.,1.0472,2.0944,3.15});
   hist h_Dphi_j_j_30_signed("Dphi_j_j_30_signed",{-100.,-3.15,-1.570796,0.,1.570796,3.15});
@@ -142,37 +142,38 @@ int main(int argc, char* argv[]) {
   cout << '\n';
 
   cout << "Total nominal weight: " << total_weight[0] << endl;
-
-  // scale histograms to cross section
-  for (const auto& h : hist::all) {
-    for (auto& b : h->bins()) {
-      for (unsigned i=total_weight.size(); i; ) { --i;
-        b.w[i] *= (xs_br_fe.GetVal() / total_weight[i]);
-      }
-    }
-  }
-
-  // construct covariance matrices
-  auto cov_pT_yy = cov(h_pT_yy,1);
-  for (unsigned i=2, n=_w_pdf4lhc_unc.GetSize()+1; i<n; ++i)
-    cov_pT_yy += cov(h_pT_yy,i);
-
-  // construct correlation matrices
-  const auto corr_pT_yy = corr(cov_pT_yy);
-
   cout << '\n';
-  for (double s : corr_pT_yy.stdev)
-    cout << s << endl;
-  cout << endl;
-  for (double c : corr_pT_yy.corr.mat)
-    cout << c << endl;
 
   // Output =========================================================
 
   TFile f(argv[1],"recreate");
 
-  // Save nominal histograms
-  for (const auto& h : hist::all) th1(h,0);
+  for (const auto& h : hist::all) {
+    cout << "\033[0;1m" << h.name << "\033[0m" << endl;
+    // scale to cross section
+    for (auto& b : h->bins()) {
+      for (unsigned i=total_weight.size(); i; ) { --i;
+        b.w[i] *= (xs_br_fe.GetVal() / total_weight[i]);
+      }
+    }
+
+    // Save nominal histograms
+    th1(h,0);
+
+    // construct covariance matrices
+    auto cov_pT_yy = cov(h_pT_yy,1);
+    for (unsigned i=2, n=_w_pdf4lhc_unc.GetSize()+1; i<n; ++i)
+      cov_pT_yy += cov(h_pT_yy,i);
+
+    // construct correlation matrices
+    const auto cor_pT_yy = cor(cov_pT_yy);
+
+    cout << "\nstandard deviations\n";
+    for (double s : cor_pT_yy.stdev)
+      cout << s << endl;
+    cout << "\ncorrelation matrix\n";
+    cout << cor_pT_yy.cor << endl;
+  }
 
   f.Write();
 

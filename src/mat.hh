@@ -63,15 +63,15 @@ public:
 };
 
 template <typename T>
-struct corr_stdev {
-  lt_mat<T> corr;
+struct cor_stdev {
+  lt_mat<T> cor;
   std::vector<T> stdev;
 };
 
 template <typename T>
-corr_stdev<T> corr(const sym_mat<T>& cov) {
+cor_stdev<T> cor(const sym_mat<T>& cov) {
   const unsigned n = cov.size();
-  lt_mat<T> corr(n);
+  lt_mat<T> cor(n);
   std::vector<T> stdev(n);
 
   for (unsigned i=0; i<n; ++i)
@@ -81,35 +81,37 @@ corr_stdev<T> corr(const sym_mat<T>& cov) {
   for (unsigned i=0; i<n; ++i) {
     for (unsigned j=0; j<i; ++j) {
       // std::cout << cov[k] << "/(" << stdev[i]<<'*'<<stdev[j]<<')'<< std::endl;
-      corr(i,j) = cov[k]/(stdev[i]*stdev[j]);
+      cor(i,j) = cov[k]/(stdev[i]*stdev[j]);
       ++k;
     }
     ++k;
   }
 
-  return { std::move(corr), std::move(stdev) };
+  return { std::move(cor), std::move(stdev) };
 }
 
 template <typename T>
 std::ostream& operator<<(std::ostream& s, const sym_mat<T>& m) {
+  std::ostream s1(s.rdbuf());
+  s1 << std::fixed << std::setprecision(3);
   for (unsigned i=0, n=m.size(); i<n; ++i) {
     for (unsigned j=0; j<n; ++j) {
-      s << std::setw(10) << m(i,j) << ' ';
+      s1 << std::setw(7) << m(i,j) << ' ';
     }
-    s << '\n';
+    s1 << '\n';
   }
   return s;
 }
 
 template <typename T>
 std::ostream& operator<<(std::ostream& s, const lt_mat<T>& m) {
-  for (unsigned i=0, n=m.size(); i<n; ++i) {
+  std::ostream s1(s.rdbuf());
+  s1 << std::fixed << std::setprecision(3);
+  for (unsigned i=1, n=m.size(); i<n; ++i) {
     for (unsigned j=0; j<n; ++j) {
-      s << std::setw(10);
-      if (j<i) s << m(i,j);
-      else s << 0;
+      if (j<i) s1 << std::setw(7) << m(i,j);
     }
-    s << '\n';
+    s1 << '\n';
   }
   return s;
 }
