@@ -24,6 +24,7 @@
 using std::cout;
 using std::cerr;
 using std::endl;
+using ivanp::cat;
 
 template <typename T>
 const auto& get_param(TFile* f, const char* name) {
@@ -51,7 +52,6 @@ using hist = ivanp::binner<hist_bin, std::tuple<
 TH1D* th1(const ivanp::named_ptr<hist>& hp, unsigned w) {
   const auto& hax = hp->axis();
   TH1D *h = new TH1D(hp.name.c_str(),"", hax.nbins(), 0, 1 );
-    // hp->axis().nbins(), hp->axis().edges().data() );
   TAxis *ax = h->GetXaxis();
 
   unsigned n = 0;
@@ -76,6 +76,12 @@ sym_mat<double> cov(const hist& h, unsigned i) {
 }
 sym_mat<double> cov(const std::vector<std::vector<double>>& h, unsigned i) {
   return { h, [i](const auto& bin){ return bin.at(i)-bin[0]; } };
+}
+template <typename H>
+sym_mat<double> cov(const H& h, unsigned i, unsigned n) {
+  auto m = cov(h,i);
+  for ( ++i; i<n; ++i) m += cov(h,i);
+  return m;
 }
 
 template <typename M, typename L>
@@ -165,6 +171,7 @@ int main(int argc, char* argv[]) {
 
     const Int_t N_j_30 = *_N_j_30;
 
+    // Fill histograms
     h_N_j_30(N_j_30);
     h_pT_yy(*_pT_yy*1e-3);
     h_pT_j1_30(*_pT_j1_30*1e-3);
@@ -185,8 +192,8 @@ int main(int argc, char* argv[]) {
 
   TFile f(argv[1],"recreate");
 
-  for (const auto& h : hist::all) {
-    cout << "\033[0;1m" << h.name << "\033[0m" << endl;
+  for (const auto& h : hist::all) { // loop over histograms
+    cout << h.name << endl;
     const auto& axis = h->axis();
 
     for (unsigned bi=0; bi<axis.nbins(); ++bi) {
@@ -207,45 +214,45 @@ int main(int argc, char* argv[]) {
     // Save nominal histograms
     th1(h,0);
 
-    // construct covariance matrix for this histogram
-    auto m_cov = cov(*h,1);
-    for (unsigned i=2, n=_w_pdf4lhc_unc.GetSize()+1; i<n; ++i)
-      m_cov += cov(*h,i);
+    for (const auto* w : {
+      &_w_pdf4lhc_unc, &_w_nnpdf30_unc, &_w_qcd, &_w_qcd_nnlops
+    }) {
+      static unsigned si = 1;
 
-    // construct correlation matrix for this histogram
-    const auto m_cor = cor(m_cov);
+      // construct correlation matrix for this histogram
+      const auto m_cor = cor(cov( *h, si, w->GetSize()+si ));
 
-    cout << "\nstandard deviations\n";
-    std::ostream sci(cout.rdbuf());
-    sci << std::scientific << std::setprecision(3);
-    for (double s : m_cor.stdev) sci << s << endl;
-    cout << "\ncorrelation matrix\n";
-    cout << m_cor.cor << endl;
+      // Save correlation matrix as a histogram
+      mat_hist(m_cor.cor,
+        cat("cor",w->GetBranchName()+1,'_',h.name).c_str(),
+        (h.name+" correlation matrix").c_str(),
+        [&axis](unsigned i){
+          return cat('[',axis.lower(i),',',axis.upper(i),')');
+        }, {-1,1}
+      );
 
-    auto bin_labels = [&axis](unsigned i){
-      return cat('[',axis.lower(i),',',axis.upper(i),')');
-    };
-    // mat_hist(m_cov,
-    //   ("cov_"+h.name).c_str(),(h.name+" covariance matrix").c_str(),
-    //   bin_labels
-    // );
-    mat_hist(m_cor.cor,
-      ("cor_"+h.name).c_str(),(h.name+" correlation matrix").c_str(),
-      bin_labels, {-1,1}
-    );
+      if (w==&_w_qcd_nnlops) si = 1;
+      else si += w->GetSize();
+    }
   } // end loop over histograms
 
-  for (const auto& x : all_bins) cout << x[0] << endl;
+  for (const auto* w : {
+    &_w_pdf4lhc_unc, &_w_nnpdf30_unc, &_w_qcd, &_w_qcd_nnlops
+  }) {
+    static unsigned si = 1;
 
-  // construct the big matrices
-  auto cov_all = cov(all_bins,1);
-  for (unsigned i=2, n=_w_pdf4lhc_unc.GetSize(); i<=n; ++i)
-    cov_all += cov(all_bins,i);
-  const auto cor_all = cor(cov_all);
+    // construct the big correlation matrix
+    const auto cor_all = cor(cov( all_bins, si, w->GetSize()+si ));
 
-  mat_hist(cor_all.cor, "cor_all","correlation matrix",
-    [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
-  );
+    mat_hist(cor_all.cor,
+      cat("cor",w->GetBranchName()+1,"_all").c_str(),
+      "correlation matrix",
+      [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
+    );
+
+    if (w==&_w_qcd_nnlops) si = 1;
+    else si += w->GetSize();
+  }
 
   f.Write();
 
