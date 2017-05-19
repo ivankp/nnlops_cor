@@ -49,6 +49,11 @@ std::vector<double> hist_bin::weights;
 using hist = ivanp::binner<hist_bin, std::tuple<
   ivanp::axis_spec<ivanp::container_axis<std::vector<double>>,0,0>>>;
 
+template <typename A>
+std::string bin_label(const A& axis, unsigned i) {
+  return cat('[',axis.lower(i),',',axis.upper(i),')');
+}
+
 TH1D* th1(const ivanp::named_ptr<hist>& hp, unsigned w) {
   const auto& hax = hp->axis();
   TH1D *h = new TH1D(hp.name.c_str(),"", hax.nbins(), 0, 1 );
@@ -60,13 +65,17 @@ TH1D* th1(const ivanp::named_ptr<hist>& hp, unsigned w) {
     const auto& b = bins[i-1];
     if (!b.n) continue;
     (*h)[i] = b.w.at(w);
-    ax->SetBinLabel(i,cat('[',hax.lower(i),',',hax.upper(i),')').c_str());
+    ax->SetBinLabel(i,bin_label(hax,i).c_str());
     n += b.n;
   }
   h->SetEntries(n);
 
   return h;
 }
+
+// TH1D* th1(const vector<double>& v, const char* name, const char* title) {
+//   TH1D *h = new TH1D()
+// }
 
 sym_mat<double> cov(const hist& h, unsigned i) {
   return { h.bins(), [i](const hist_bin& bin){
@@ -207,8 +216,7 @@ int main(int argc, char* argv[]) {
         all_bins.back().push_back(w);
       }
       // make bin labels
-      all_bin_labels.emplace_back(cat(
-        h.name," [",axis.lower(bi+1),',',axis.upper(bi+1),')'));
+      all_bin_labels.emplace_back(h.name+bin_label(axis,bi+1));
     }
 
     // Save nominal histograms
@@ -226,9 +234,7 @@ int main(int argc, char* argv[]) {
       mat_hist(m_cor.cor,
         cat("cor",w->GetBranchName()+1,'_',h.name).c_str(),
         (h.name+" correlation matrix").c_str(),
-        [&axis](unsigned i){
-          return cat('[',axis.lower(i),',',axis.upper(i),')');
-        }, {-1,1}
+        [&axis](unsigned i){ return bin_label(axis,i); }, {-1,1}
       );
 
       if (w==&_w_qcd_nnlops) si = 1;
