@@ -34,6 +34,37 @@ class sym_mat { // symmetric matrix
   static constexpr unsigned N(unsigned n) { return n*(n+1) >> 1; }
 public:
   std::vector<T> mat;
+
+  sym_mat(): _n(0), mat() { }
+  sym_mat(const sym_mat& o): _n(o._n), mat(o.mat) { }
+  sym_mat(sym_mat&& o): _n(o._n), mat(std::move(o.mat)) { }
+
+  sym_mat& operator=(const sym_mat& o) {
+    _n = o._n;
+    mat = o.mat;
+    return *this;
+  }
+  sym_mat& operator=(sym_mat&& o) {
+    _n = o._n;
+    mat = std::move(o.mat);
+    return *this;
+  }
+
+  sym_mat& operator+=(const sym_mat& rhs) {
+    if (_n!=rhs._n) throw std::length_error(
+      "adding sym_mat of unequal size");
+    for (unsigned i=mat.size(); i; ) { --i;
+      mat[i] += rhs.mat[i];
+    }
+    return *this;
+  }
+
+  sym_mat operator+(const sym_mat& rhs) const {
+    sym_mat m = *this;
+    m += rhs;
+    return m;
+  }
+
   template <typename Indexable>
   sym_mat(const Indexable& xx): _n(xx.size()), mat(N(_n)) {
     unsigned k = 0;
@@ -53,16 +84,6 @@ public:
         ++k;
       }
     }
-  }
-  sym_mat(const sym_mat& o): _n(o._n), mat(o.mat) { }
-  sym_mat(sym_mat&& o): _n(o._n), mat(std::move(o.mat)) { }
-  sym_mat& operator+=(const sym_mat& rhs) {
-    if (_n!=rhs._n) throw std::length_error(
-      "adding sym_mat of unequal size");
-    for (unsigned i=mat.size(); i; ) { --i;
-      mat[i] += rhs.mat[i];
-    }
-    return *this;
   }
   T& operator()(unsigned i, unsigned j) {
     if (j>i) std::swap(i,j);

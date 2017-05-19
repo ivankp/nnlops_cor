@@ -258,13 +258,19 @@ int main(int argc, char* argv[]) {
     }
   } // end loop over histograms
 
+  sym_mat<double> cov_nnpdf30, cov_qcd_nnlops;
+
   for (const auto* w : {
     &_w_pdf4lhc_unc, &_w_nnpdf30_unc, &_w_qcd, &_w_qcd_nnlops
   }) {
     static unsigned si = 1;
 
     // construct the big correlation matrix
-    const auto cor_all = cor(cov( all_bins, si, w->GetSize()+si ));
+    auto cov_all = cov( all_bins, si, w->GetSize()+si );
+    const auto cor_all = cor(cov_all);
+
+    if (w==&_w_nnpdf30_unc) cov_nnpdf30 = cov_all;
+    else if (w==&_w_qcd_nnlops) cov_qcd_nnlops = cov_all;
 
     mat_hist(cor_all.cor,
       cat("cor",w->GetBranchName()+1,"_all").c_str(),
@@ -275,6 +281,12 @@ int main(int argc, char* argv[]) {
     if (w==&_w_qcd_nnlops) si = 1;
     else si += w->GetSize();
   }
+
+  const auto cor_nnpdf30_qcd_nnlops = cor(cov_nnpdf30 + cov_qcd_nnlops);
+  mat_hist(cor_nnpdf30_qcd_nnlops.cor,
+    "cor_nnpdf30_qcd_nnlops", "correlation matrix",
+    [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
+  );
 
   f.Write();
 
