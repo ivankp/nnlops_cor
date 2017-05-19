@@ -6,16 +6,20 @@
 
 #include <TFile.h>
 #include <TChain.h>
-#include <TH1.h>
 #include <TTreeReader.h>
 #include <TTreeReaderValue.h>
 #include <TTreeReaderArray.h>
 #include <TParameter.h>
+#include <TH1.h>
+#include <TH2.h>
 
 #include "timed_counter.hh"
 #include "catstr.hh"
 #include "binner.hh"
 #include "mat.hh"
+
+#define TEST(var) \
+  std::cout <<"\033[36m"<< #var <<"\033[0m"<< " = " << var << std::endl;
 
 using std::cout;
 using std::cerr;
@@ -69,6 +73,36 @@ sym_mat<double> cov(const hist& h, unsigned i) {
       return bin.n ? bin.w.at(i)-bin.w[0] : 0.; // err_i
     }
   };
+}
+sym_mat<double> cov(const std::vector<std::vector<double>>& h, unsigned i) {
+  return { h, [i](const auto& bin){ return bin.at(i)-bin[0]; } };
+}
+
+template <typename M, typename L>
+TH2D* mat_hist(const M& m, const char* name, const char* title, L labels,
+  std::pair<double,double> range = {0,0}
+) {
+  const unsigned n = m.size();
+  TH2D *h = new TH2D(name,title, n,0,1, n,0,1);
+
+  for (unsigned j=0; j<n; ++j)
+    for (unsigned i=0; i<n; ++i)
+      h->SetBinContent(j+1,i+1,m(i,j));
+
+  TAxis *ax = h->GetXaxis(), *ay = h->GetYaxis();
+  for (unsigned i=1; i<=n; ++i) {
+    const std::string label = labels(i);
+    ax->SetBinLabel(i,label.c_str());
+    ay->SetBinLabel(i,label.c_str());
+  }
+
+  if (range.first!=range.second) {
+    h->SetMinimum(range.first);
+    h->SetMaximum(range.second);
+  }
+  h->SetOption("colz");
+
+  return h;
 }
 
 int main(int argc, char* argv[]) {
@@ -146,17 +180,34 @@ int main(int argc, char* argv[]) {
 
   // Output =========================================================
 
-  std::vector<std::vector<double>> bins(total_weight.size());
+  std::vector<std::vector<double>> all_bins;
+  std::vector<std::string> all_bin_labels;
 
   TFile f(argv[1],"recreate");
 
   for (const auto& h : hist::all) {
     cout << "\033[0;1m" << h.name << "\033[0m" << endl;
+    const auto& axis = h->axis();
+
     // scale to cross section
-    for (auto& b : h->bins()) {
-      for (unsigned i=total_weight.size(); i; ) { --i;
-        b.w[i] *= (xs_br_fe.GetVal() / total_weight[i]);
+    // for (auto& b : h->bins())
+    //   for (unsigned i=total_weight.size(); i; ) { --i;
+    //     b.w[i] *= (xs_br_fe.GetVal() / total_weight[i]);
+    //   }
+
+    for (unsigned bi=0; bi<axis.nbins(); ++bi) {
+      auto& bin = h->bins()[bi];
+      all_bins.emplace_back();
+      for (unsigned wi=0; wi<total_weight.size(); ++wi) {
+        auto& w = bin.w[wi];
+        // scale to cross section
+        w *= (xs_br_fe.GetVal() / total_weight[wi]);
+        // join histograms
+        if (wi) all_bins.back().push_back(w-bin.w[0]);
       }
+      // make bin labels
+      all_bin_labels.emplace_back(cat(
+        h.name," [",axis.lower(bi+1),',',axis.upper(bi+1),')'));
     }
 
     // Save nominal histograms
@@ -177,11 +228,39 @@ int main(int argc, char* argv[]) {
     cout << "\ncorrelation matrix\n";
     cout << m_cor.cor << endl;
 
-    // join histograms
-    for (unsigned i=1; i<total_weight.size(); ++i)
-      for (auto& b : h->bins())
-        bins[i].push_back(b.w[i]-b.w[0]);
+    auto bin_labels = [&axis](unsigned i){
+      return cat('[',axis.lower(i),',',axis.upper(i),')');
+    };
+    // mat_hist(m_cov,
+    //   ("cov_"+h.name).c_str(),(h.name+" covariance matrix").c_str(),
+    //   bin_labels
+    // );
+    mat_hist(m_cor.cor,
+      ("cor_"+h.name).c_str(),(h.name+" correlation matrix").c_str(),
+      bin_labels, {-1,1}
+    );
+
+    // // join histograms
+    // for (auto& b : h->bins()) {
+    //   all_bins.emplace_back();
+    //   for (unsigned i=0; i<total_weight.size(); ++i)
+    //     all_bins.back().push_back(b.w[i+1]-b.w[0]);
+    // }
+    //
+    // for (unsigned i=1; i<=axis.nbins(); ++i)
+    //   all_bin_labels.emplace_back(cat(
+    //     h.name," [",axis.lower(i),',',axis.upper(i),')'));
   }
+
+  // construct the big matrices
+  auto cov_all = cov(all_bins,1);
+  for (unsigned i=2, n=_w_pdf4lhc_unc.GetSize(); i<n; ++i)
+    cov_all += cov(all_bins,i);
+  const auto cor_all = cor(cov_all);
+
+  mat_hist(cor_all.cor, "cor_all","correlation matrix",
+    [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
+  );
 
   f.Write();
 

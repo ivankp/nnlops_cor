@@ -18,8 +18,9 @@ public:
     if (j>i) std::swap(i,j);
     return mat[N(i)+j];
   }
-  const T& operator()(unsigned i, unsigned j) const {
-    if (j>i) std::swap(i,j);
+  T operator()(unsigned i, unsigned j) const {
+    if (i==j) return 1;
+    if (i<j) std::swap(i,j);
     return mat[N(i)+j];
   }
   inline T& operator[](unsigned k) { return mat[k]; }
