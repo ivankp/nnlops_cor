@@ -54,9 +54,9 @@ std::string bin_label(const A& axis, unsigned i) {
   return cat('[',axis.lower(i),',',axis.upper(i),')');
 }
 
-TH1D* th1(const ivanp::named_ptr<hist>& hp, unsigned w) {
+TH1D* th1(const ivanp::named_ptr<hist>& hp, unsigned w, const char* title="") {
   const auto& hax = hp->axis();
-  TH1D *h = new TH1D(hp.name.c_str(),"", hax.nbins(), 0, 1 );
+  TH1D *h = new TH1D(hp.name.c_str(),title, hax.nbins(), 0, 1 );
   TAxis *ax = h->GetXaxis();
 
   unsigned n = 0;
@@ -73,9 +73,19 @@ TH1D* th1(const ivanp::named_ptr<hist>& hp, unsigned w) {
   return h;
 }
 
-// TH1D* th1(const vector<double>& v, const char* name, const char* title) {
-//   TH1D *h = new TH1D()
-// }
+template <typename L>
+TH1D* th1(const std::vector<double>& v,
+  const char* name, const char* title, L labels
+) {
+  TH1D *h = new TH1D(name,title,v.size(),0,1);
+  TAxis *ax = h->GetXaxis();
+
+  for (unsigned i=1; i<=v.size(); ++i) {
+    (*h)[i] = v[i-1];
+    ax->SetBinLabel(i,labels(i).c_str());
+  }
+  return h;
+}
 
 sym_mat<double> cov(const hist& h, unsigned i) {
   return { h.bins(), [i](const hist_bin& bin){
@@ -220,7 +230,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Save nominal histograms
-    th1(h,0);
+    th1(h,0,(h.name+" nominal distribution").c_str());
 
     for (const auto* w : {
       &_w_pdf4lhc_unc, &_w_nnpdf30_unc, &_w_qcd, &_w_qcd_nnlops
@@ -229,6 +239,12 @@ int main(int argc, char* argv[]) {
 
       // construct correlation matrix for this histogram
       const auto m_cor = cor(cov( *h, si, w->GetSize()+si ));
+
+      th1(m_cor.stdev,
+        cat("stdev",w->GetBranchName()+1,'_',h.name).c_str(),
+        (h.name+" standard deviations").c_str(),
+        [&axis](unsigned i){ return bin_label(axis,i); }
+      );
 
       // Save correlation matrix as a histogram
       mat_hist(m_cor.cor,
