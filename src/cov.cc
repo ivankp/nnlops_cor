@@ -189,12 +189,6 @@ int main(int argc, char* argv[]) {
     cout << "\033[0;1m" << h.name << "\033[0m" << endl;
     const auto& axis = h->axis();
 
-    // scale to cross section
-    // for (auto& b : h->bins())
-    //   for (unsigned i=total_weight.size(); i; ) { --i;
-    //     b.w[i] *= (xs_br_fe.GetVal() / total_weight[i]);
-    //   }
-
     for (unsigned bi=0; bi<axis.nbins(); ++bi) {
       auto& bin = h->bins()[bi];
       all_bins.emplace_back();
@@ -203,7 +197,7 @@ int main(int argc, char* argv[]) {
         // scale to cross section
         w *= (xs_br_fe.GetVal() / total_weight[wi]);
         // join histograms
-        if (wi) all_bins.back().push_back(w-bin.w[0]);
+        all_bins.back().push_back(w);
       }
       // make bin labels
       all_bin_labels.emplace_back(cat(
@@ -239,22 +233,13 @@ int main(int argc, char* argv[]) {
       ("cor_"+h.name).c_str(),(h.name+" correlation matrix").c_str(),
       bin_labels, {-1,1}
     );
+  } // end loop over histograms
 
-    // // join histograms
-    // for (auto& b : h->bins()) {
-    //   all_bins.emplace_back();
-    //   for (unsigned i=0; i<total_weight.size(); ++i)
-    //     all_bins.back().push_back(b.w[i+1]-b.w[0]);
-    // }
-    //
-    // for (unsigned i=1; i<=axis.nbins(); ++i)
-    //   all_bin_labels.emplace_back(cat(
-    //     h.name," [",axis.lower(i),',',axis.upper(i),')'));
-  }
+  for (const auto& x : all_bins) cout << x[0] << endl;
 
   // construct the big matrices
   auto cov_all = cov(all_bins,1);
-  for (unsigned i=2, n=_w_pdf4lhc_unc.GetSize(); i<n; ++i)
+  for (unsigned i=2, n=_w_pdf4lhc_unc.GetSize(); i<=n; ++i)
     cov_all += cov(all_bins,i);
   const auto cor_all = cor(cov_all);
 
