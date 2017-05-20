@@ -4,9 +4,9 @@ ROOT_LIBS   := $(shell root-config --libs)
 
 .PHONY: all clean
 
-EXE := cov test_hist test_cov
+EXE := cor test_hist test_cov
 
-all: cov
+all: cor
 test: test_hist test_cov
 
 cov test_cov: include/mat.hh
