@@ -3,6 +3,7 @@
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
+#include <cmath>
 
 #include <TFile.h>
 #include <TChain.h>
@@ -27,8 +28,8 @@ using std::endl;
 using ivanp::cat;
 
 template <typename T>
-const auto& get_param(TFile* f, const char* name) {
-  return *dynamic_cast<const TParameter<T>*>(f->Get(name));
+auto& get_param(TFile* f, const char* name) {
+  return *dynamic_cast<TParameter<T>*>(f->Get(name));
 }
 
 struct hist_bin {
@@ -141,8 +142,9 @@ int main(int argc, char* argv[]) {
     if (!chain.Add(argv[i],0)) return 1;
 
   cout << '\n';
-  const auto& xs_br_fe =
+  auto& xs_br_fe =
     get_param<double>(chain.GetFile(),"crossSectionBRfilterEff");
+  if (xs_br_fe.GetVal() < 0.) xs_br_fe.SetVal(0.1101404);
   cout << xs_br_fe.GetName() << " = " << xs_br_fe.GetVal() <<'\n'<< endl;
 
   TTreeReader reader(&chain);
@@ -170,6 +172,8 @@ int main(int argc, char* argv[]) {
 
   std::vector<double> total_weight;
 
+  unsigned n_bad_weights = 0, n_events_with_bad_weights = 0;
+
   using tc = ivanp::timed_counter<Long64_t>;
   for (tc ent(reader.GetEntries(true)); reader.Next(); ++ent) { // LOOP
     // Read the weights ---------------------------------------------
@@ -180,6 +184,17 @@ int main(int argc, char* argv[]) {
     for (const double w : _w_qcd)         hist_bin::weights.push_back(w);
     for (const double w : _w_qcd_nnlops)  hist_bin::weights.push_back(w);
     // --------------------------------------------------------------
+
+    bool had_bad_weight = false;
+    for (double& w : hist_bin::weights) {
+      if (!std::isfinite(w)) {
+        cout << "w = " << w << endl;
+        w = 1.;
+        ++n_bad_weights;
+        if (!had_bad_weight) had_bad_weight = true;
+      }
+    }
+    if (had_bad_weight) ++n_events_with_bad_weights;
 
     if (total_weight.size()==0) total_weight = hist_bin::weights;
     else for (unsigned i=total_weight.size(); i; ) { --i;
@@ -202,6 +217,11 @@ int main(int argc, char* argv[]) {
   cout << '\n';
 
   cout << "Total nominal weight: " << total_weight[0] << endl;
+  cout << '\n';
+
+  TEST( n_bad_weights )
+  TEST( n_events_with_bad_weights )
+
   cout << '\n';
 
   // Output =========================================================
