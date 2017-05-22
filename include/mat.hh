@@ -129,10 +129,14 @@ cor_stdev<T> cor(const sym_mat<T>& cov) {
 template <typename T>
 std::ostream& operator<<(std::ostream& s, const sym_mat<T>& m) {
   std::ostream s1(s.rdbuf());
-  s1 << std::fixed << std::setprecision(3);
+  s1 << std::fixed << std::setprecision(1) << std::scientific;
   for (unsigned i=0, n=m.size(); i<n; ++i) {
     for (unsigned j=0; j<n; ++j) {
-      s1 << std::setw(7) << m(i,j) << ' ';
+      s1 << std::setw(8);// << m(i,j) << ' ';
+      const auto x = m(i,j);
+      if (x) s1 << x;
+      else s1 << '.';
+      s1 << ' ';
     }
     s1 << '\n';
   }
