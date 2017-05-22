@@ -43,9 +43,9 @@ struct hist_bin {
     }
     ++n;
   }
-  static std::vector<double> weights;
+  static std::vector<double> weights, total_weights;
 };
-std::vector<double> hist_bin::weights;
+std::vector<double> hist_bin::weights, hist_bin::total_weights;
 
 using hist = ivanp::binner<hist_bin, std::tuple<
   ivanp::axis_spec<ivanp::container_axis<std::vector<double>>,0,0>>>;
@@ -158,10 +158,12 @@ int main(int argc, char* argv[]) {
   TTreeReaderValue<Float_t> _Dphi_j_j_30_signed(reader,"Dphi_j_j_30_signed");
 
   TTreeReaderValue<Double_t> _w_nominal(reader,"w_nominal");
-  TTreeReaderArray<double> _w_pdf4lhc_unc(reader,"w_pdf4lhc_unc");
-  TTreeReaderArray<double> _w_nnpdf30_unc(reader,"w_nnpdf30_unc");
-  TTreeReaderArray<double> _w_qcd(reader,"w_qcd");
-  TTreeReaderArray<double> _w_qcd_nnlops(reader,"w_qcd_nnlops");
+  std::array<TTreeReaderArray<double>,4> _weights {{
+    {reader,"w_pdf4lhc_unc"},
+    {reader,"w_nnpdf30_unc"},
+    {reader,"w_qcd"},
+    {reader,"w_qcd_nnlops"}
+  }};
 
   hist h_pT_yy("pT_yy",{0.,20.,30.,45.,60.,80.,120.,170.,220.,350.,99999.});
   hist h_N_j_30("N_j_30",{ 0.,1.,2.,3.,9999. });
@@ -170,25 +172,22 @@ int main(int argc, char* argv[]) {
   hist h_Dphi_j_j_30_signed("Dphi_j_j_30_signed",{-3.15,-1.570796,0.,1.570796,3.15});
   hist h_pT_j1_30("pT_j1_30",{30.,55.,75.,120.,350.,99999.});
 
-  std::vector<double> total_weight;
-
-  unsigned n_bad_weights = 0, n_events_with_bad_weights = 0;
+  unsigned n_bad_weights = 0, n_events_with_bad_weights = 0,
+           n_fiducial = 0;
 
   using tc = ivanp::timed_counter<Long64_t>;
   for (tc ent(reader.GetEntries(true)); reader.Next(); ++ent) { // LOOP
     // Read the weights ---------------------------------------------
     hist_bin::weights.clear();
     hist_bin::weights.push_back(*_w_nominal);
-    for (const double w : _w_pdf4lhc_unc) hist_bin::weights.push_back(w);
-    for (const double w : _w_nnpdf30_unc) hist_bin::weights.push_back(w);
-    for (const double w : _w_qcd)         hist_bin::weights.push_back(w);
-    for (const double w : _w_qcd_nnlops)  hist_bin::weights.push_back(w);
-    // --------------------------------------------------------------
+    for (auto& _w : _weights)
+      for (const double w : _w)
+        hist_bin::weights.push_back(w);
 
+    // handle bad weights
     bool had_bad_weight = false;
     for (double& w : hist_bin::weights) {
-      if (!std::isfinite(w)) {
-        cout << "w = " << w << endl;
+      if (!std::isfinite(w) || std::abs(w) > 150.) {
         w = 1.;
         ++n_bad_weights;
         if (!had_bad_weight) had_bad_weight = true;
@@ -196,17 +195,19 @@ int main(int argc, char* argv[]) {
     }
     if (had_bad_weight) ++n_events_with_bad_weights;
 
-    if (total_weight.size()==0) total_weight = hist_bin::weights;
-    else for (unsigned i=total_weight.size(); i; ) { --i;
-      total_weight[i] += hist_bin::weights[i];
+    // add the event's weights to total
+    if (hist_bin::total_weights.size()==0) {
+      hist_bin::total_weights = hist_bin::weights;
+    } else for (unsigned i=hist_bin::weights.size(); i; ) { --i;
+      hist_bin::total_weights[i] += hist_bin::weights[i];
     }
+    // --------------------------------------------------------------
 
     if (!*_isFiducial) continue;
-
-    const Int_t N_j_30 = *_N_j_30;
+    ++n_fiducial;
 
     // Fill histograms
-    h_N_j_30(N_j_30);
+    h_N_j_30(*_N_j_30);
     h_pT_yy(*_pT_yy*1e-3);
     h_pT_j1_30(*_pT_j1_30*1e-3);
     h_m_jj_30(*_m_jj_30*1e-3);
@@ -216,13 +217,11 @@ int main(int argc, char* argv[]) {
   } // end event loop
   cout << '\n';
 
-  cout << "Total nominal weight: " << total_weight[0] << endl;
-  cout << '\n';
-
-  TEST( n_bad_weights )
-  TEST( n_events_with_bad_weights )
-
-  cout << '\n';
+  cout << "Total nominal weight: " << hist_bin::total_weights[0] << '\n';
+  cout << "Fiducial events: " << n_fiducial << '\n';
+  cout << "Bad weights: " << n_bad_weights << '\n';
+  cout << "Events with bad weights: " << n_events_with_bad_weights << '\n';
+  cout << endl;
 
   // Output =========================================================
 
@@ -238,10 +237,10 @@ int main(int argc, char* argv[]) {
     for (unsigned bi=0; bi<axis.nbins(); ++bi) {
       auto& bin = h->bins()[bi];
       all_bins.emplace_back();
-      for (unsigned wi=0; wi<total_weight.size(); ++wi) {
+      for (unsigned wi=0; wi<hist_bin::total_weights.size(); ++wi) {
         auto& w = bin.w[wi];
         // scale to cross section
-        w *= (xs_br_fe.GetVal() / total_weight[wi]);
+        w *= (xs_br_fe.GetVal() / hist_bin::total_weights[wi]);
         // join histograms
         all_bins.back().push_back(w);
       }
@@ -252,58 +251,54 @@ int main(int argc, char* argv[]) {
     // Save nominal histograms
     th1(h,0,(h.name+" nominal distribution").c_str());
 
-    for (const auto* w : {
-      &_w_pdf4lhc_unc, &_w_nnpdf30_unc, &_w_qcd, &_w_qcd_nnlops
-    }) {
-      static unsigned si = 1;
-
+    unsigned i1 = 1;
+    for (const auto& w : _weights) {
       // construct correlation matrix for this histogram
-      const auto m_cor = cor(cov( *h, si, w->GetSize()+si ));
+      const auto m_cor = cor(cov( *h, i1, w.GetSize()+i1 ));
 
       th1(m_cor.stdev,
-        cat("stdev",w->GetBranchName()+1,'_',h.name).c_str(),
+        cat("stdev",w.GetBranchName()+1,'_',h.name).c_str(),
         (h.name+" standard deviations").c_str(),
         [&axis](unsigned i){ return bin_label(axis,i); }
       );
 
       // Save correlation matrix as a histogram
       mat_hist(m_cor.cor,
-        cat("cor",w->GetBranchName()+1,'_',h.name).c_str(),
+        cat("cor",w.GetBranchName()+1,'_',h.name).c_str(),
         (h.name+" correlation matrix").c_str(),
         [&axis](unsigned i){ return bin_label(axis,i); }, {-1,1}
       );
 
-      if (w==&_w_qcd_nnlops) si = 1;
-      else si += w->GetSize();
+      i1 += w.GetSize();
     }
   } // end loop over histograms
 
-  sym_mat<double> cov_nnpdf30, cov_qcd_nnlops;
+  std::vector<sym_mat<double>> big_cov;
+  big_cov.reserve(4);
 
-  for (const auto* w : {
-    &_w_pdf4lhc_unc, &_w_nnpdf30_unc, &_w_qcd, &_w_qcd_nnlops
-  }) {
-    static unsigned si = 1;
-
+  for (const auto& w : _weights) {
+    static unsigned i1 = 1;
     // construct the big correlation matrix
-    auto cov_all = cov( all_bins, si, w->GetSize()+si );
+    auto cov_all = cov( all_bins, i1, w.GetSize()+i1 );
     const auto cor_all = cor(cov_all);
 
-    if (w==&_w_nnpdf30_unc) cov_nnpdf30 = cov_all;
-    else if (w==&_w_qcd_nnlops) cov_qcd_nnlops = cov_all;
+    big_cov.emplace_back(std::move(cov_all));
 
     mat_hist(cor_all.cor,
-      cat("cor",w->GetBranchName()+1,"_all").c_str(),
+      cat("cor",w.GetBranchName()+1,"_all").c_str(),
       "correlation matrix",
       [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
     );
 
-    if (w==&_w_qcd_nnlops) si = 1;
-    else si += w->GetSize();
+    i1 += w.GetSize();
   }
 
-  const auto cor_nnpdf30_qcd_nnlops = cor(cov_nnpdf30 + cov_qcd_nnlops);
-  mat_hist(cor_nnpdf30_qcd_nnlops.cor,
+  mat_hist(cor(big_cov[0]+big_cov[2]).cor,
+    "cor_pdf4lhc_qcd", "correlation matrix",
+    [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
+  );
+
+  mat_hist(cor(big_cov[1]+big_cov[3]).cor,
     "cor_nnpdf30_qcd_nnlops", "correlation matrix",
     [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
   );

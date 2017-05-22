@@ -4,12 +4,12 @@ ROOT_LIBS   := $(shell root-config --libs)
 
 .PHONY: all clean
 
-EXE := cor test_hist test_cov test_with_data
+EXE := cor cor2 test_hist test_cov test_with_data cor3
 
-all: cor test_with_data
+all: cor test_with_data cor3
 test: test_hist test_cov test_with_data
 
-cov test_cov test_with_data: include/mat.hh
+cor test_cov test_with_data cor2: include/mat.hh
 
 $(EXE): %: src/%.cc include/timed_counter.hh
 	$(CXX) -std=c++14 -Wall -g -Iinclude -fmax-errors=3 \

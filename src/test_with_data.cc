@@ -17,10 +17,11 @@
 #include "timed_counter.hh"
 #include "catstr.hh"
 #include "binner.hh"
-#include "mat.hh"
 
 #define TEST(var) \
   std::cout <<"\033[36m"<< #var <<"\033[0m"<< " = " << var << std::endl;
+
+#include "mat.hh"
 
 using std::cout;
 using std::cerr;
@@ -37,7 +38,7 @@ struct hist_bin {
   std::vector<double> w;
   void operator++() {
     if (!n) w = weights;
-    else for (size_t i=weights.size(); i; ) {
+    else for (unsigned i=weights.size(); i; ) {
       --i;
       w[i] += weights[i];
     }
@@ -132,13 +133,13 @@ TH2D* mat_hist(const M& m, const char* name, const char* title, L labels,
 }
 
 int main(int argc, char* argv[]) {
-  if (argc<3) {
+  if (argc<2) {
     cout << "usage: " << argv[0] << " out.root in1.root ..." << endl;
     return 1;
   }
 
   TChain chain("tree");
-  for (int i=2; i<argc; ++i)
+  for (int i=1; i<argc; ++i)
     if (!chain.Add(argv[i],0)) return 1;
 
   cout << '\n';
@@ -158,15 +159,15 @@ int main(int argc, char* argv[]) {
   TTreeReaderValue<Float_t> _Dphi_j_j_30_signed(reader,"Dphi_j_j_30_signed");
 
   TTreeReaderValue<Double_t> _w_nominal(reader,"w_nominal");
-  std::array<TTreeReaderArray<double>,4> _weights {{
-    {reader,"w_pdf4lhc_unc"},
-    {reader,"w_nnpdf30_unc"},
-    {reader,"w_qcd"},
-    {reader,"w_qcd_nnlops"}
+  std::array<TTreeReaderArray<double>,1> _weights {{
+    {reader,"w_pdf4lhc_unc"}
+    // {reader,"w_nnpdf30_unc"},
+    // {reader,"w_qcd"}
+    // {reader,"w_qcd_nnlops"}
   }};
 
   hist h_pT_yy("pT_yy",{0.,20.,30.,45.,60.,80.,120.,170.,220.,350.,99999.});
-  // hist h_N_j_30("N_j_30",{ 0.,1.,2.,3.,9999. });
+  hist h_N_j_30("N_j_30",{ 0.,1.,2.,3.,9999. });
   // hist h_m_jj_30("m_jj_30",{0.,170.,500.,1500.,99999.});
   // hist h_Dphi_j_j_30("Dphi_j_j_30",{0.,1.0472,2.0944,3.15});
   // hist h_Dphi_j_j_30_signed("Dphi_j_j_30_signed",{-3.15,-1.570796,0.,1.570796,3.15});
@@ -188,7 +189,7 @@ int main(int argc, char* argv[]) {
     // handle bad weights
     bool had_bad_weight = false;
     for (double& w : hist_bin::weights) {
-      if (!std::isfinite(w)) {
+      if (!std::isfinite(w) || std::abs(w) > 150.) {
         // cout << "w = " << w << endl;
         w = 1.;
         ++n_bad_weights;
@@ -205,19 +206,25 @@ int main(int argc, char* argv[]) {
     }
     // --------------------------------------------------------------
 
-    TEST( hist_bin::weights[0] )
+    // TEST( hist_bin::weights[0] )
 
     if (!*_isFiducial) continue;
     ++n_fiducial;
 
     // Fill histograms
+    h_N_j_30(*_N_j_30);
     h_pT_yy(*_pT_yy*1e-3);
+    // h_pT_j1_30(*_pT_j1_30*1e-3);
+    // h_m_jj_30(*_m_jj_30*1e-3);
+    // h_Dphi_j_j_30(*_Dphi_j_j_30);
+    // h_Dphi_j_j_30_signed(*_Dphi_j_j_30_signed);
 
-    if (n_fiducial==5) break; // TEST
+    // if (n_fiducial==5) break; // TEST
 
   } // end event loop
   cout << '\n';
 
+  cout << "N fiducial events: " << n_fiducial << endl;
   cout << "Total nominal weight: " << hist_bin::total_weights[0] << endl;
   cout << '\n';
 
@@ -228,8 +235,15 @@ int main(int argc, char* argv[]) {
 
   // Output =========================================================
 
-  for (int wi : {0,1,2})
-    TEST( (xs_br_fe.GetVal() / hist_bin::total_weights[wi]) );
+  // for (int wi : {0,1,2})
+  //   TEST( (xs_br_fe.GetVal() / hist_bin::total_weights[wi]) );
+
+  // for (auto w : hist_bin::total_weights)
+  //   cout << w << endl;
+  // cout << endl;
+
+  // TEST( _weights[0].GetSize() )
+  // TEST( _weights[1].GetSize() )
 
   for (const auto& h : hist::all) { // loop over histograms
     cout << h.name << endl;
@@ -237,15 +251,26 @@ int main(int argc, char* argv[]) {
 
     for (unsigned bi=0; bi<axis.nbins(); ++bi) {
       auto& bin = h->bins()[bi];
-      if (bin.w.size()==0) // assign ones to empty bin
-        bin.w.assign(hist_bin::weights.size(),1.);
+      if (bin.w.size()==0) // assign zeros to empty bin
+        bin.w.assign(hist_bin::weights.size(),0.);
       for (unsigned wi=0; wi<hist_bin::weights.size(); ++wi) {
         auto& w = bin.w[wi];
         // scale to cross section
-        if (wi<2) cout << ' ' << w;
-        w *= (xs_br_fe.GetVal() / hist_bin::total_weights[wi]);
-        if (wi<2) cout << ' ' << w;
+        // if (wi<2) cout << ' ' << w;
+        // const double f = (xs_br_fe.GetVal() / hist_bin::total_weights[wi]);
+        // TEST( f )
+        // w *= f;
+        // w *= (xs_br_fe.GetVal() / hist_bin::total_weights[wi]);
+        w *= (0.1101404*36100.0 / hist_bin::total_weights[wi]);
+        // if (wi<2) cout << ' ' << w;
       }
+      // cout << endl;
+    }
+    cout << endl;
+
+    TEST( h->bins()[0].w.size() )
+    for (const auto& b : h->bins()) {
+      for (auto w : b.w) cout << ' ' << w;
       cout << endl;
     }
     cout << endl;
@@ -254,16 +279,14 @@ int main(int argc, char* argv[]) {
     for (auto& w : _weights) {
       cout << w.GetBranchName() << endl;
       // construct correlation matrix for this histogram
-      // const auto m_cov = cov( *h, i1, w.GetSize()+i1 );
-      // const auto m_cov = cov( *h, i1, 2+i1 );
-      const auto m_cov = cov( *h, 1 );
-      const auto m_cor = cor(m_cov);
-
+      const auto m_cov = cov( *h, i1, w.GetSize()+i1 );
+      // const auto m_cov = cov( *h, 1, 30+1 );
       cout << m_cov << endl;
+      const auto m_cor = cor(m_cov);
       cout << m_cor.cor << endl;
 
       i1 += w.GetSize();
-      break; // TEST
+      break;
     }
   } // end loop over histograms
 

@@ -110,8 +110,10 @@ cor_stdev<T> cor(const sym_mat<T>& cov) {
   lt_mat<T> cor(n);
   std::vector<T> stdev(n);
 
-  for (unsigned i=0; i<n; ++i)
+  for (unsigned i=0; i<n; ++i) {
     stdev[i] = std::sqrt(cov(i,i));
+    // TEST( stdev[i] )
+  }
 
   unsigned k = 0;
   for (unsigned i=0; i<n; ++i) {
@@ -129,10 +131,10 @@ cor_stdev<T> cor(const sym_mat<T>& cov) {
 template <typename T>
 std::ostream& operator<<(std::ostream& s, const sym_mat<T>& m) {
   std::ostream s1(s.rdbuf());
-  s1 << std::fixed << std::setprecision(1) << std::scientific;
+  s1 << std::fixed << std::setprecision(4) << std::scientific;
   for (unsigned i=0, n=m.size(); i<n; ++i) {
     for (unsigned j=0; j<n; ++j) {
-      s1 << std::setw(8);// << m(i,j) << ' ';
+      s1 << std::setw(11);// << m(i,j) << ' ';
       const auto x = m(i,j);
       if (x) s1 << x;
       else s1 << '.';
