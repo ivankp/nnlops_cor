@@ -9,7 +9,8 @@ EXE := cor test_hist test_cov
 all: cor
 tests: test_hist test_cov
 
-cor test_cov: include/mat.hh
+cor: include/mat.hh include/mapper.hh include/catstr.hh
+test_cov: include/mat.hh
 
 $(EXE): %: src/%.cc include/timed_counter.hh
 	$(CXX) -std=c++14 -Wall -O3 -flto -Iinclude -fmax-errors=3 \

@@ -18,6 +18,7 @@
 #include "catstr.hh"
 #include "binner.hh"
 #include "mat.hh"
+#include "mapper.hh"
 
 #define TEST(var) \
   std::cout <<"\033[36m"<< #var <<"\033[0m"<< " = " << var << std::endl;
@@ -193,11 +194,13 @@ int main(int argc, char* argv[]) {
     }
   }
   cout << endl;
+
   std::vector<TTreeReaderArray<double>> _weights;
   _weights.reserve(w_names.size());
   for (const char* name : w_names)
     _weights.emplace_back(reader,name);
 
+  // Define histograms
   hist h_pT_yy("pT_yy",{0.,20.,30.,45.,60.,80.,120.,170.,220.,350.});
   hist h_N_j_30("N_j_30",{ 0.,1.,2.,3.,9999. });
   hist h_m_jj_30("m_jj_30",{0.,170.,500.,1500.});
@@ -205,6 +208,7 @@ int main(int argc, char* argv[]) {
   hist h_Dphi_j_j_30_signed("Dphi_j_j_30_signed",{-3.15,-1.570796,0.,1.570796,3.15});
   hist h_pT_j1_30("pT_j1_30",{30.,55.,75.,120.,350.});
 
+  // counters
   unsigned n_fiducial = 0;
 
   struct {
@@ -302,7 +306,7 @@ int main(int argc, char* argv[]) {
         all_bins.back().push_back(w);
       }
       // make bin labels
-      all_bin_labels.emplace_back(h.name+bin_label(axis,bi+1));
+      all_bin_labels.emplace_back(h.name+' '+bin_label(axis,bi+1));
     }
 
     // Save nominal histograms
@@ -352,7 +356,7 @@ int main(int argc, char* argv[]) {
   f.mkdir("error_sources")->cd();
 
   std::vector<sym_mat<double>> big_cov;
-  big_cov.reserve(4);
+  big_cov.reserve(_weights.size());
 
   for (const auto& w : _weights) {
     static unsigned i1 = 1, i2 = 1; // weight indices
@@ -402,21 +406,20 @@ int main(int argc, char* argv[]) {
 
   f.cd(); // cd back to the file
 
-  /*
-  mat_hist(cor(big_cov[0]+big_cov[2]).cor,
-    "cor_pdf4lhc_qcd",
-    cat(_weights[0].GetBranchName()+2,'+',_weights[2].GetBranchName()+2,
-        " correlation matrix"),
-    [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
-  );
+  const auto m = map(_weights,
+    [](const auto& w, const char* name){
+      return !strcmp(w.GetBranchName()+2,name);
+    });
 
-  mat_hist(cor(big_cov[1]+big_cov[3]).cor,
-    "cor_nnpdf30_qcd_nnlops",
-    cat(_weights[1].GetBranchName()+2,'+',_weights[3].GetBranchName()+2,
+  const auto pdf_i = m.index("pdf4lhc_unc");
+  const auto qcd_i = m.index("ggf_qcd_2017");
+
+  mat_hist(cor(big_cov[pdf_i]+big_cov[qcd_i]).cor,
+    "cor_pdf4lhc-ggf_qcd_2017",
+    cat(_weights[pdf_i].GetBranchName()+2,'+',_weights[qcd_i].GetBranchName()+2,
         " correlation matrix"),
     [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
   );
-  */
 
   f.Write();
   cout <<'\n'<< f.GetName() << " \033[32m✔\033[0m" << endl;
