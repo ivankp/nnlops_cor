@@ -4,15 +4,15 @@ ROOT_LIBS   := $(shell root-config --libs)
 
 .PHONY: all clean
 
-EXE := cor cor2 test_hist test_cov test_with_data cor3
+EXE := cor test_hist test_cov
 
-all: cor test_with_data cor3
-test: test_hist test_cov test_with_data
+all: cor
+tests: test_hist test_cov
 
-cor test_cov test_with_data cor2: include/mat.hh
+cor test_cov: include/mat.hh
 
 $(EXE): %: src/%.cc include/timed_counter.hh
-	$(CXX) -std=c++14 -Wall -g -Iinclude -fmax-errors=3 \
+	$(CXX) -std=c++14 -Wall -O3 -flto -Iinclude -fmax-errors=3 \
 	  $(ROOT_CFLAGS) \
 	  $(filter %.cc,$^) -o $@ \
 	  $(ROOT_LIBS) -lTreePlayer
