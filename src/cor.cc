@@ -173,6 +173,7 @@ int main(int argc, char* argv[]) {
   hist h_pT_j1_30("pT_j1_30",{30.,55.,75.,120.,350.});
 
   unsigned n_bad_weights = 0, n_events_with_bad_weights = 0,
+           n_events_with_bad_nominal_weight = 0,
            n_fiducial = 0;
 
   using tc = ivanp::timed_counter<Long64_t>;
@@ -186,11 +187,13 @@ int main(int argc, char* argv[]) {
 
     // handle bad weights
     bool had_bad_weight = false;
-    for (double& w : hist_bin::weights) {
+    for (unsigned i=0; i<hist_bin::weights.size(); ++i) {
+      double& w = hist_bin::weights[i];
       if (!std::isfinite(w) || std::abs(w) > 150.) {
         w = 1.;
         ++n_bad_weights;
         if (!had_bad_weight) had_bad_weight = true;
+        if (i==0) ++n_events_with_bad_nominal_weight;
       }
     }
     if (had_bad_weight) ++n_events_with_bad_weights;
@@ -221,6 +224,8 @@ int main(int argc, char* argv[]) {
   cout << "Fiducial events: " << n_fiducial << '\n';
   cout << "Bad weights: " << n_bad_weights << '\n';
   cout << "Events with bad weights: " << n_events_with_bad_weights << '\n';
+  cout << "Events with bad nominal weight: "
+       << n_events_with_bad_nominal_weight << '\n';
   cout << endl;
 
   // Output =========================================================
