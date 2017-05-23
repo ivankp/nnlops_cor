@@ -75,10 +75,10 @@ std::string bin_label(const A& axis, unsigned i) {
 template <typename WeightPred>
 TH1D* th1(const ivanp::named_ptr<hist>& hp,
   WeightPred predicate,
-  const char* name, const char* title=""
+  const std::string& name, const std::string& title
 ) {
   const auto& hax = hp->axis();
-  TH1D *h = new TH1D( name, title, hax.nbins(), 0, hax.nbins() );
+  TH1D *h = new TH1D(name.c_str(), title.c_str(), hax.nbins(), 0, hax.nbins());
   TAxis *ax = h->GetXaxis();
 
   unsigned n = 0;
@@ -97,9 +97,9 @@ TH1D* th1(const ivanp::named_ptr<hist>& hp,
 
 template <typename L>
 TH1D* th1(const std::vector<double>& v,
-  const char* name, const char* title, L labels
+  const std::string& name, const std::string& title, L labels
 ) {
-  TH1D *h = new TH1D(name,title,v.size(),0,v.size());
+  TH1D *h = new TH1D(name.c_str(),title.c_str(),v.size(),0,v.size());
   TAxis *ax = h->GetXaxis();
 
   for (unsigned i=1; i<=v.size(); ++i) {
@@ -126,11 +126,12 @@ sym_mat<double> cov(const H& h, unsigned i, unsigned n) {
 }
 
 template <typename M, typename L>
-TH2D* mat_hist(const M& m, const char* name, const char* title, L labels,
+TH2D* mat_hist(const M& m,
+  const std::string& name, const std::string& title, L labels,
   std::pair<double,double> range = {0,0}
 ) {
   const unsigned n = m.size();
-  TH2D *h = new TH2D(name,title, n,0,n, n,0,n);
+  TH2D *h = new TH2D(name.c_str(),title.c_str(), n,0,n, n,0,n);
 
   for (unsigned j=0; j<n; ++j)
     for (unsigned i=0; i<n; ++i)
@@ -294,9 +295,9 @@ int main(int argc, char* argv[]) {
     }
 
     // Save nominal histograms
-    th1(h,0,"nominal",(h.name+" nominal distribution").c_str());
+    th1(h,0,"nominal",(h.name+" nominal distribution"));
 
-    unsigned i1 = 1, i2 = 1;
+    unsigned i1 = 1, i2 = 1; // weight indices
     for (const auto& w : _weights) {
       i2 += w.GetSize();
       const char *name = w.GetBranchName()+1;
@@ -305,33 +306,28 @@ int main(int argc, char* argv[]) {
 
         // QCD envelope histograms
         th1(h,[=](const hist_bin& b){ return b.min(i1,i2); },
-            cat("down",name).c_str(),
-            cat(h.name,' ',name+1," down variation").c_str());
+            cat("down",name), cat(h.name,' ',name+1," down variation"));
         th1(h,[=](const hist_bin& b){ return b.max(i1,i2); },
-            cat("up",name).c_str(),
-            cat(h.name,' ',name+1," up variation").c_str());
+            cat("up",name), cat(h.name,' ',name+1," up variation"));
 
         // Symmetrized QCD uncertainties
         th1(h,[=](const hist_bin& b){
               return std::max( b[0]-b.min(i1,i2), b.max(i1,i2)-b[0] ); },
-            cat("err",name).c_str(),
-            cat(h.name,' ',name+1," symmetrized uncertainties").c_str());
+            cat("err",name),
+            cat(h.name,' ',name+1," symmetrized uncertainties"));
 
       } else { // PDF weights
 
         // construct correlation matrix for this histogram
         const auto m_cor = cor(cov( *h, i1, i2 ));
 
-        th1(m_cor.stdev,
-          cat("err",name).c_str(),
-          cat(h.name,' ',name+1," errors").c_str(),
+        th1(m_cor.err, cat("err",name), cat(h.name,' ',name+1," errors"),
           [&axis](unsigned i){ return bin_label(axis,i); }
         );
 
         // Save correlation matrix as a histogram
-        mat_hist(m_cor.cor,
-          cat("cor",name).c_str(),
-          cat(h.name,' ',name+1," correlation matrix").c_str(),
+        mat_hist(m_cor.cor, cat("cor",name),
+          cat(h.name,' ',name+1," correlation matrix"),
           [&axis](unsigned i){ return bin_label(axis,i); }, {-1,1}
         );
 
@@ -349,37 +345,64 @@ int main(int argc, char* argv[]) {
   big_cov.reserve(4);
 
   for (const auto& w : _weights) {
-    static unsigned i1 = 1;
+    static unsigned i1 = 1, i2 = 1; // weight indices
+    i2 += w.GetSize();
     const char *name = w.GetBranchName()+1;
 
-    // construct the big correlation matrix
-    auto cov_all = cov( all_bins, i1, w.GetSize()+i1 );
-    const auto cor_all = cor(cov_all);
+    if ( strlen(name)>=4 && !memcmp(name+1,"qcd",3) ) { // QCD weights
 
-    big_cov.emplace_back(std::move(cov_all));
+      // Symmetrized QCD uncertainties
+      std::vector<double> symm_err(all_bins.size(),0.);
+      for (unsigned i=0; i<all_bins.size(); ++i) {
+        const auto& b = all_bins[i];
+        const auto begin = b.begin();
+        symm_err[i] = std::max(
+          b[0] - *std::min_element(begin+i1,begin+i2),
+          *std::max_element(begin+i1,begin+i2) - b[0] );
+      }
 
-    th1(cor_all.stdev,
-      cat("err",name).c_str(), "errors",
-      [&](unsigned i){ return all_bin_labels.at(i-1); }
-    );
+      th1(symm_err,
+        cat("err",name), cat(name+1," errors"),
+        [&](unsigned i){ return all_bin_labels.at(i-1); }
+      );
 
-    mat_hist(cor_all.cor,
-      cat("cor",name).c_str(), "correlation matrix",
-      [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
-    );
+      big_cov.emplace_back(symm_err);
 
-    i1 += w.GetSize();
+    } else { // PDF weights
+
+      // construct the big correlation matrix
+      auto cov_all = cov( all_bins, i1, i2 );
+      const auto cor_all = cor(cov_all);
+
+      big_cov.emplace_back(std::move(cov_all));
+
+      th1(cor_all.err,
+        cat("err",name), cat(name+1," errors"),
+        [&](unsigned i){ return all_bin_labels.at(i-1); }
+      );
+
+      mat_hist(cor_all.cor,
+        cat("cor",name), cat(name+1," correlation matrix"),
+        [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
+      );
+
+    }
+    i1 = i2;
   }
 
   f.cd(); // cd back to the file
 
   mat_hist(cor(big_cov[0]+big_cov[2]).cor,
-    "cor_pdf4lhc_qcd", "correlation matrix",
+    "cor_pdf4lhc_qcd",
+    cat(_weights[0].GetBranchName()+2,'+',_weights[2].GetBranchName()+2,
+        " correlation matrix"),
     [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
   );
 
   mat_hist(cor(big_cov[1]+big_cov[3]).cor,
-    "cor_nnpdf30_qcd_nnlops", "correlation matrix",
+    "cor_nnpdf30_qcd_nnlops",
+    cat(_weights[1].GetBranchName()+2,'+',_weights[3].GetBranchName()+2,
+        " correlation matrix"),
     [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
   );
 

@@ -99,33 +99,33 @@ public:
 };
 
 template <typename T>
-struct cor_stdev {
+struct cor_err {
   lt_mat<T> cor;
-  std::vector<T> stdev;
+  std::vector<T> err;
 };
 
 template <typename T>
-cor_stdev<T> cor(const sym_mat<T>& cov) {
+cor_err<T> cor(const sym_mat<T>& cov) {
   const unsigned n = cov.size();
   lt_mat<T> cor(n);
-  std::vector<T> stdev(n);
+  std::vector<T> err(n);
 
   for (unsigned i=0; i<n; ++i) {
-    stdev[i] = std::sqrt(cov(i,i));
-    // TEST( stdev[i] )
+    err[i] = std::sqrt(cov(i,i));
+    // TEST( err[i] )
   }
 
   unsigned k = 0;
   for (unsigned i=0; i<n; ++i) {
     for (unsigned j=0; j<i; ++j) {
-      // std::cout << cov[k] << "/(" << stdev[i]<<'*'<<stdev[j]<<')'<< std::endl;
-      cor(i,j) = cov[k]/(stdev[i]*stdev[j]);
+      // std::cout << cov[k] << "/(" << err[i]<<'*'<<err[j]<<')'<< std::endl;
+      cor(i,j) = cov[k]/(err[i]*err[j]);
       ++k;
     }
     ++k;
   }
 
-  return { std::move(cor), std::move(stdev) };
+  return { std::move(cor), std::move(err) };
 }
 
 template <typename T>
