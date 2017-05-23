@@ -75,12 +75,10 @@ std::string bin_label(const A& axis, unsigned i) {
 template <typename WeightPred>
 TH1D* th1(const ivanp::named_ptr<hist>& hp,
   WeightPred predicate,
-  const char* title="",
-  const char* name_suffix=""
+  const char* name, const char* title=""
 ) {
   const auto& hax = hp->axis();
-  TH1D *h = new TH1D( (hp.name+name_suffix).c_str(),title,
-                      hax.nbins(), 0, hax.nbins() );
+  TH1D *h = new TH1D( name, title, hax.nbins(), 0, hax.nbins() );
   TAxis *ax = h->GetXaxis();
 
   unsigned n = 0;
@@ -267,15 +265,6 @@ int main(int argc, char* argv[]) {
        << setw(9) << n_large.nominal;
   cout <<'\n'<< endl;
 
-  // starts of spans of sub-arrays in  the big weights vector
-  // last element is end
-  std::array<unsigned,std::tuple_size<decltype(_weights)>::value> _wi;
-  for (unsigned i=0; i<_wi.size(); ++i) {
-    _wi[i] = 1;
-    for (unsigned j=0; j<i; ++j)
-      _wi[i] += _weights[j].GetSize();
-  }
-
   // Output =========================================================
 
   std::vector<std::vector<double>> all_bins;
@@ -305,33 +294,49 @@ int main(int argc, char* argv[]) {
     }
 
     // Save nominal histograms
-    th1(h,0,(h.name+" nominal distribution").c_str());
+    th1(h,0,"nominal",(h.name+" nominal distribution").c_str());
 
-    // QCD envelope histograms
-    th1(h,[&_wi](const hist_bin& b){ return b.min(_wi[2],_wi[3]); },
-        (h.name+" QCD down variation").c_str(),"_qcd_down");
-    th1(h,[&_wi](const hist_bin& b){ return b.max(_wi[2],_wi[3]); },
-        (h.name+" QCD up variation").c_str(),"_qcd_up");
-
-    unsigned i1 = 1;
+    unsigned i1 = 1, i2 = 1;
     for (const auto& w : _weights) {
-      // construct correlation matrix for this histogram
-      const auto m_cor = cor(cov( *h, i1, w.GetSize()+i1 ));
+      i2 += w.GetSize();
+      const char *name = w.GetBranchName()+1;
 
-      th1(m_cor.stdev,
-        cat("stdev",w.GetBranchName()+1,'_',h.name).c_str(),
-        (h.name+" standard deviations").c_str(),
-        [&axis](unsigned i){ return bin_label(axis,i); }
-      );
+      if ( strlen(name)>=4 && !memcmp(name+1,"qcd",3) ) { // QCD weights
 
-      // Save correlation matrix as a histogram
-      mat_hist(m_cor.cor,
-        cat("cor",w.GetBranchName()+1,'_',h.name).c_str(),
-        (h.name+" correlation matrix").c_str(),
-        [&axis](unsigned i){ return bin_label(axis,i); }, {-1,1}
-      );
+        // QCD envelope histograms
+        th1(h,[=](const hist_bin& b){ return b.min(i1,i2); },
+            cat("down",name).c_str(),
+            cat(h.name,' ',name+1," down variation").c_str());
+        th1(h,[=](const hist_bin& b){ return b.max(i1,i2); },
+            cat("up",name).c_str(),
+            cat(h.name,' ',name+1," up variation").c_str());
 
-      i1 += w.GetSize();
+        // Symmetrized QCD uncertainties
+        th1(h,[=](const hist_bin& b){
+              return std::max( b[0]-b.min(i1,i2), b.max(i1,i2)-b[0] ); },
+            cat("err",name).c_str(),
+            cat(h.name,' ',name+1," symmetrized uncertainties").c_str());
+
+      } else { // PDF weights
+
+        // construct correlation matrix for this histogram
+        const auto m_cor = cor(cov( *h, i1, i2 ));
+
+        th1(m_cor.stdev,
+          cat("err",name).c_str(),
+          cat(h.name,' ',name+1," errors").c_str(),
+          [&axis](unsigned i){ return bin_label(axis,i); }
+        );
+
+        // Save correlation matrix as a histogram
+        mat_hist(m_cor.cor,
+          cat("cor",name).c_str(),
+          cat(h.name,' ',name+1," correlation matrix").c_str(),
+          [&axis](unsigned i){ return bin_label(axis,i); }, {-1,1}
+        );
+
+      }
+      i1 = i2;
     }
 
     gDirectory->cd("..");
@@ -345,7 +350,7 @@ int main(int argc, char* argv[]) {
 
   for (const auto& w : _weights) {
     static unsigned i1 = 1;
-    const char *name = w.GetBranchName();
+    const char *name = w.GetBranchName()+1;
 
     // construct the big correlation matrix
     auto cov_all = cov( all_bins, i1, w.GetSize()+i1 );
@@ -354,12 +359,12 @@ int main(int argc, char* argv[]) {
     big_cov.emplace_back(std::move(cov_all));
 
     th1(cor_all.stdev,
-      cat("stdev_",name).c_str(), "all standard deviations",
+      cat("err",name).c_str(), "errors",
       [&](unsigned i){ return all_bin_labels.at(i-1); }
     );
 
     mat_hist(cor_all.cor,
-      cat("cor",name+1,"_all").c_str(), "correlation matrix",
+      cat("cor",name).c_str(), "correlation matrix",
       [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
     );
 
