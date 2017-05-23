@@ -295,39 +295,38 @@ int main(int argc, char* argv[]) {
     }
 
     // Save nominal histograms
-    th1(h,0,"nominal",(h.name+" nominal distribution"));
+    th1(h,0,"nominal",h.name+" nominal distribution");
 
     unsigned i1 = 1, i2 = 1; // weight indices
     for (const auto& w : _weights) {
       i2 += w.GetSize();
-      const char *name = w.GetBranchName()+1;
+      std::string name(w.GetBranchName()+2);
 
-      if ( strlen(name)>=4 && !memcmp(name+1,"qcd",3) ) { // QCD weights
+      if (name.find("qcd")!=std::string::npos) { // QCD weights
 
         // QCD envelope histograms
         th1(h,[=](const hist_bin& b){ return b.min(i1,i2); },
-            cat("down",name), cat(h.name,' ',name+1," down variation"));
+            "down_"+name, cat(h.name,' ',name," down variation"));
         th1(h,[=](const hist_bin& b){ return b.max(i1,i2); },
-            cat("up",name), cat(h.name,' ',name+1," up variation"));
+            "up_"+name, cat(h.name,' ',name," up variation"));
 
         // Symmetrized QCD uncertainties
         th1(h,[=](const hist_bin& b){
               return std::max( b[0]-b.min(i1,i2), b.max(i1,i2)-b[0] ); },
-            cat("err",name),
-            cat(h.name,' ',name+1," symmetrized uncertainties"));
+            "err_"+name, cat(h.name,' ',name," symmetrized uncertainties"));
 
       } else { // PDF weights
 
         // construct correlation matrix for this histogram
         const auto m_cor = cor(cov( *h, i1, i2 ));
 
-        th1(m_cor.err, cat("err",name), cat(h.name,' ',name+1," errors"),
+        th1(m_cor.err, "err_"+name, cat(h.name,' ',name," errors"),
           [&axis](unsigned i){ return bin_label(axis,i); }
         );
 
         // Save correlation matrix as a histogram
-        mat_hist(m_cor.cor, cat("cor",name),
-          cat(h.name,' ',name+1," correlation matrix"),
+        mat_hist(m_cor.cor, "cor_"+name,
+          cat(h.name,' ',name," correlation matrix"),
           [&axis](unsigned i){ return bin_label(axis,i); }, {-1,1}
         );
 
@@ -347,9 +346,9 @@ int main(int argc, char* argv[]) {
   for (const auto& w : _weights) {
     static unsigned i1 = 1, i2 = 1; // weight indices
     i2 += w.GetSize();
-    const char *name = w.GetBranchName()+1;
+    std::string name(w.GetBranchName()+2);
 
-    if ( strlen(name)>=4 && !memcmp(name+1,"qcd",3) ) { // QCD weights
+    if (name.find("qcd")!=std::string::npos) { // QCD weights
 
       // Symmetrized QCD uncertainties
       std::vector<double> symm_err(all_bins.size(),0.);
@@ -362,7 +361,7 @@ int main(int argc, char* argv[]) {
       }
 
       th1(symm_err,
-        cat("err",name), cat(name+1," errors"),
+        "err_"+name, name+" errors",
         [&](unsigned i){ return all_bin_labels.at(i-1); }
       );
 
@@ -377,12 +376,12 @@ int main(int argc, char* argv[]) {
       big_cov.emplace_back(std::move(cov_all));
 
       th1(cor_all.err,
-        cat("err",name), cat(name+1," errors"),
+        "err_"+name, name+" errors",
         [&](unsigned i){ return all_bin_labels.at(i-1); }
       );
 
       mat_hist(cor_all.cor,
-        cat("cor",name), cat(name+1," correlation matrix"),
+        "cor_"+name, name+" correlation matrix",
         [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
       );
 
