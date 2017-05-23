@@ -25,6 +25,7 @@
 using std::cout;
 using std::cerr;
 using std::endl;
+using std::setw;
 using ivanp::cat;
 
 template <typename T>
@@ -35,6 +36,8 @@ auto& get_param(TFile* f, const char* name) {
 struct hist_bin {
   unsigned n = 0;
   std::vector<double> w;
+  static std::vector<double> weights, total_weights;
+
   void operator++() {
     if (!n) w = weights;
     else for (size_t i=weights.size(); i; ) {
@@ -43,7 +46,21 @@ struct hist_bin {
     }
     ++n;
   }
-  static std::vector<double> weights, total_weights;
+  double min(unsigned first, unsigned last) const {
+    return *std::min_element(w.begin()+first,w.begin()+last);
+  }
+  double max(unsigned first, unsigned last) const {
+    return *std::max_element(w.begin()+first,w.begin()+last);
+  }
+
+  template <typename T>
+  auto operator[](T&& f) const -> decltype(f(*this)) { return f(*this); }
+  template <typename T>
+  inline std::enable_if_t<std::is_integral<T>::value,double>
+  operator[](T i) const { return w[i]; }
+  template <typename T>
+  inline std::enable_if_t<std::is_integral<T>::value,double>&
+  operator[](T i) { return w[i]; }
 };
 std::vector<double> hist_bin::weights, hist_bin::total_weights;
 
@@ -55,9 +72,15 @@ std::string bin_label(const A& axis, unsigned i) {
   return cat('[',axis.lower(i),',',axis.upper(i),')');
 }
 
-TH1D* th1(const ivanp::named_ptr<hist>& hp, unsigned w, const char* title="") {
+template <typename WeightPred>
+TH1D* th1(const ivanp::named_ptr<hist>& hp,
+  WeightPred predicate,
+  const char* title="",
+  const char* name_suffix=""
+) {
   const auto& hax = hp->axis();
-  TH1D *h = new TH1D(hp.name.c_str(),title, hax.nbins(), 0, 1 );
+  TH1D *h = new TH1D( (hp.name+name_suffix).c_str(),title,
+                      hax.nbins(), 0, hax.nbins() );
   TAxis *ax = h->GetXaxis();
 
   unsigned n = 0;
@@ -65,7 +88,7 @@ TH1D* th1(const ivanp::named_ptr<hist>& hp, unsigned w, const char* title="") {
   for (unsigned i=1; i<=bins.size(); ++i) {
     const auto& b = bins[i-1];
     if (!b.n) continue;
-    (*h)[i] = b.w.at(w);
+    (*h)[i] = b[predicate];
     ax->SetBinLabel(i,bin_label(hax,i).c_str());
     n += b.n;
   }
@@ -78,7 +101,7 @@ template <typename L>
 TH1D* th1(const std::vector<double>& v,
   const char* name, const char* title, L labels
 ) {
-  TH1D *h = new TH1D(name,title,v.size(),0,1);
+  TH1D *h = new TH1D(name,title,v.size(),0,v.size());
   TAxis *ax = h->GetXaxis();
 
   for (unsigned i=1; i<=v.size(); ++i) {
@@ -90,12 +113,12 @@ TH1D* th1(const std::vector<double>& v,
 
 sym_mat<double> cov(const hist& h, unsigned i) {
   return { h.bins(), [i](const hist_bin& bin){
-      return bin.n ? bin.w.at(i)-bin.w[0] : 0.; // err_i
+      return bin.n ? bin[i]-bin[0] : 0.; // err_i
     }
   };
 }
 sym_mat<double> cov(const std::vector<std::vector<double>>& h, unsigned i) {
-  return { h, [i](const auto& bin){ return bin.at(i)-bin[0]; } };
+  return { h, [i](const auto& bin){ return bin[i]-bin[0]; } };
 }
 template <typename H>
 sym_mat<double> cov(const H& h, unsigned i, unsigned n) {
@@ -109,7 +132,7 @@ TH2D* mat_hist(const M& m, const char* name, const char* title, L labels,
   std::pair<double,double> range = {0,0}
 ) {
   const unsigned n = m.size();
-  TH2D *h = new TH2D(name,title, n,0,1, n,0,1);
+  TH2D *h = new TH2D(name,title, n,0,n, n,0,n);
 
   for (unsigned j=0; j<n; ++j)
     for (unsigned i=0; i<n; ++i)
@@ -126,7 +149,7 @@ TH2D* mat_hist(const M& m, const char* name, const char* title, L labels,
     h->SetMinimum(range.first);
     h->SetMaximum(range.second);
   }
-  h->SetOption("colz");
+  h->SetOption("COLZTEXT");
 
   return h;
 }
@@ -172,31 +195,40 @@ int main(int argc, char* argv[]) {
   hist h_Dphi_j_j_30_signed("Dphi_j_j_30_signed",{-3.15,-1.570796,0.,1.570796,3.15});
   hist h_pT_j1_30("pT_j1_30",{30.,55.,75.,120.,350.});
 
-  unsigned n_bad_weights = 0, n_events_with_bad_weights = 0,
-           n_events_with_bad_nominal_weight = 0,
-           n_fiducial = 0;
+  unsigned n_fiducial = 0;
+
+  struct {
+    unsigned weights = 0, events = 0, nominal = 0;
+  } n_inf, n_large;
 
   using tc = ivanp::timed_counter<Long64_t>;
   for (tc ent(reader.GetEntries(true)); reader.Next(); ++ent) { // LOOP
     // Read the weights ---------------------------------------------
-    hist_bin::weights.clear();
+    hist_bin::weights.clear(); // current event weights
     hist_bin::weights.push_back(*_w_nominal);
     for (auto& _w : _weights)
       for (const double w : _w)
         hist_bin::weights.push_back(w);
 
     // handle bad weights
-    bool had_bad_weight = false;
-    for (unsigned i=0; i<hist_bin::weights.size(); ++i) {
-      double& w = hist_bin::weights[i];
-      if (!std::isfinite(w) || std::abs(w) > 150.) {
+    bool first_bad_weight = true, is_nom_w = true;
+    for (double& w : hist_bin::weights) {
+      bool is_inf = false;
+      if ((is_inf = !std::isfinite(w)) || std::abs(w) > 150.) {
         w = 1.;
-        ++n_bad_weights;
-        if (!had_bad_weight) had_bad_weight = true;
-        if (i==0) ++n_events_with_bad_nominal_weight;
+        if (is_inf) { // count bad weights
+          ++n_inf.weights;
+          if (first_bad_weight) ++n_inf.events;
+          if (is_nom_w) ++n_inf.nominal;
+        } else {
+          ++n_large.weights;
+          if (first_bad_weight) ++n_large.events;
+          if (is_nom_w) ++n_large.nominal;
+        }
+        first_bad_weight = false;
       }
+      is_nom_w = false;
     }
-    if (had_bad_weight) ++n_events_with_bad_weights;
 
     // add the event's weights to total
     if (hist_bin::total_weights.size()==0) {
@@ -222,11 +254,27 @@ int main(int argc, char* argv[]) {
 
   cout << "Total nominal weight: " << hist_bin::total_weights[0] << '\n';
   cout << "Fiducial events: " << n_fiducial << '\n';
-  cout << "Bad weights: " << n_bad_weights << '\n';
-  cout << "Events with bad weights: " << n_events_with_bad_weights << '\n';
-  cout << "Events with bad nominal weight: "
-       << n_events_with_bad_nominal_weight << '\n';
-  cout << endl;
+
+  cout << "\nBad weights\n          "
+          "weights   events  nominal";
+  cout << "\ninf,nan "
+       << setw(9) << n_inf.weights
+       << setw(9) << n_inf.events
+       << setw(9) << n_inf.nominal;
+  cout << "\nlarge   "
+       << setw(9) << n_large.weights
+       << setw(9) << n_large.events
+       << setw(9) << n_large.nominal;
+  cout <<'\n'<< endl;
+
+  // starts of spans of sub-arrays in  the big weights vector
+  // last element is end
+  std::array<unsigned,std::tuple_size<decltype(_weights)>::value> _wi;
+  for (unsigned i=0; i<_wi.size(); ++i) {
+    _wi[i] = 1;
+    for (unsigned j=0; j<i; ++j)
+      _wi[i] += _weights[j].GetSize();
+  }
 
   // Output =========================================================
 
@@ -235,15 +283,18 @@ int main(int argc, char* argv[]) {
 
   TFile f(argv[1],"recreate");
 
+  f.mkdir("vars")->cd(); // write variable-specific histograms in a directory
+
   for (const auto& h : hist::all) { // loop over histograms
     cout << h.name << endl;
+    gDirectory->mkdir(h.name.c_str())->cd();
     const auto& axis = h->axis();
 
     for (unsigned bi=0; bi<axis.nbins(); ++bi) {
       auto& bin = h->bins()[bi];
       all_bins.emplace_back();
       for (unsigned wi=0; wi<hist_bin::total_weights.size(); ++wi) {
-        auto& w = bin.w[wi];
+        auto& w = bin[wi];
         // scale to cross section
         w *= (xs_br_fe.GetVal() / hist_bin::total_weights[wi]);
         // join histograms
@@ -255,6 +306,12 @@ int main(int argc, char* argv[]) {
 
     // Save nominal histograms
     th1(h,0,(h.name+" nominal distribution").c_str());
+
+    // QCD envelope histograms
+    th1(h,[&_wi](const hist_bin& b){ return b.min(_wi[2],_wi[3]); },
+        (h.name+" QCD down variation").c_str(),"_qcd_down");
+    th1(h,[&_wi](const hist_bin& b){ return b.max(_wi[2],_wi[3]); },
+        (h.name+" QCD up variation").c_str(),"_qcd_up");
 
     unsigned i1 = 1;
     for (const auto& w : _weights) {
@@ -276,7 +333,11 @@ int main(int argc, char* argv[]) {
 
       i1 += w.GetSize();
     }
+
+    gDirectory->cd("..");
   } // end loop over histograms
+
+  f.cd(); // cd back to the file
 
   std::vector<sym_mat<double>> big_cov;
   big_cov.reserve(4);
@@ -309,6 +370,7 @@ int main(int argc, char* argv[]) {
   );
 
   f.Write();
+  cout <<'\n'<< f.GetName() << " \033[32m✔\033[0m" << endl;
 
   return 0;
 }
