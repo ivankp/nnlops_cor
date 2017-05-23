@@ -165,12 +165,12 @@ int main(int argc, char* argv[]) {
     {reader,"w_qcd_nnlops"}
   }};
 
-  hist h_pT_yy("pT_yy",{0.,20.,30.,45.,60.,80.,120.,170.,220.,350.,99999.});
+  hist h_pT_yy("pT_yy",{0.,20.,30.,45.,60.,80.,120.,170.,220.,350.});
   hist h_N_j_30("N_j_30",{ 0.,1.,2.,3.,9999. });
-  hist h_m_jj_30("m_jj_30",{0.,170.,500.,1500.,99999.});
+  hist h_m_jj_30("m_jj_30",{0.,170.,500.,1500.});
   hist h_Dphi_j_j_30("Dphi_j_j_30",{0.,1.0472,2.0944,3.15});
   hist h_Dphi_j_j_30_signed("Dphi_j_j_30_signed",{-3.15,-1.570796,0.,1.570796,3.15});
-  hist h_pT_j1_30("pT_j1_30",{30.,55.,75.,120.,350.,99999.});
+  hist h_pT_j1_30("pT_j1_30",{30.,55.,75.,120.,350.});
 
   unsigned n_bad_weights = 0, n_events_with_bad_weights = 0,
            n_fiducial = 0;
