@@ -338,26 +338,35 @@ int main(int argc, char* argv[]) {
   } // end loop over histograms
 
   f.cd(); // cd back to the file
+  f.mkdir("error_sources")->cd();
 
   std::vector<sym_mat<double>> big_cov;
   big_cov.reserve(4);
 
   for (const auto& w : _weights) {
     static unsigned i1 = 1;
+    const char *name = w.GetBranchName();
+
     // construct the big correlation matrix
     auto cov_all = cov( all_bins, i1, w.GetSize()+i1 );
     const auto cor_all = cor(cov_all);
 
     big_cov.emplace_back(std::move(cov_all));
 
+    th1(cor_all.stdev,
+      cat("stdev_",name).c_str(), "all standard deviations",
+      [&](unsigned i){ return all_bin_labels.at(i-1); }
+    );
+
     mat_hist(cor_all.cor,
-      cat("cor",w.GetBranchName()+1,"_all").c_str(),
-      "correlation matrix",
+      cat("cor",name+1,"_all").c_str(), "correlation matrix",
       [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
     );
 
     i1 += w.GetSize();
   }
+
+  f.cd(); // cd back to the file
 
   mat_hist(cor(big_cov[0]+big_cov[2]).cor,
     "cor_pdf4lhc_qcd", "correlation matrix",
