@@ -180,12 +180,23 @@ int main(int argc, char* argv[]) {
   TTreeReaderValue<Float_t> _Dphi_j_j_30_signed(reader,"Dphi_j_j_30_signed");
 
   TTreeReaderValue<Double_t> _w_nominal(reader,"w_nominal");
-  std::array<TTreeReaderArray<double>,4> _weights {{
-    {reader,"w_pdf4lhc_unc"},
-    {reader,"w_nnpdf30_unc"},
-    {reader,"w_qcd"},
-    {reader,"w_qcd_nnlops"}
-  }};
+
+  // Get error weights
+  std::vector<const char*> w_names;
+  cout << "\033[36mweights\033[0m:\n";
+  for (TObject* obj : *chain.GetListOfBranches()) {
+    TBranch *br = static_cast<TBranch*>(obj);
+    const char *name = br->GetName();
+    if (!memcmp(name,"w_",2) && !strcmp(br->GetClassName(),"vector<double>")) {
+      w_names.push_back(name);
+      cout << "  " << name+2 << '\n';
+    }
+  }
+  cout << endl;
+  std::vector<TTreeReaderArray<double>> _weights;
+  _weights.reserve(w_names.size());
+  for (const char* name : w_names)
+    _weights.emplace_back(reader,name);
 
   hist h_pT_yy("pT_yy",{0.,20.,30.,45.,60.,80.,120.,170.,220.,350.});
   hist h_N_j_30("N_j_30",{ 0.,1.,2.,3.,9999. });
@@ -391,6 +402,7 @@ int main(int argc, char* argv[]) {
 
   f.cd(); // cd back to the file
 
+  /*
   mat_hist(cor(big_cov[0]+big_cov[2]).cor,
     "cor_pdf4lhc_qcd",
     cat(_weights[0].GetBranchName()+2,'+',_weights[2].GetBranchName()+2,
@@ -404,6 +416,7 @@ int main(int argc, char* argv[]) {
         " correlation matrix"),
     [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
   );
+  */
 
   f.Write();
   cout <<'\n'<< f.GetName() << " \033[32m✔\033[0m" << endl;
