@@ -19,6 +19,7 @@
 #include "binner.hh"
 #include "mat.hh"
 #include "mapper.hh"
+#include "cstr.hh"
 
 #define TEST(var) \
   std::cout <<"\033[36m"<< #var <<"\033[0m"<< " = " << var << std::endl;
@@ -363,7 +364,7 @@ int main(int argc, char* argv[]) {
     i2 += w.GetSize();
     std::string name(w.GetBranchName()+2);
 
-    if (name.find("qcd")!=std::string::npos) { // QCD weights
+    if (starts_with(name.c_str(),"qcd_")) { // QCD weights
 
       // Symmetrized QCD uncertainties
       std::vector<double> symm_err(all_bins.size(),0.);
@@ -399,7 +400,6 @@ int main(int argc, char* argv[]) {
         "cor_"+name, name+" correlation matrix",
         [&](unsigned i){ return all_bin_labels.at(i-1); }, {-1,1}
       );
-
     }
     i1 = i2;
   }
