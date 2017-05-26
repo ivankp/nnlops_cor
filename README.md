@@ -6,7 +6,6 @@ Produce correlation matrices and error histograms:
 `cor` creates a root file with a lot of things in it and `TH2D`s for matrices.
 
 `convert` reads that output and makes a root file with the following structure:
-
 ```
 TH1D h_PDF_SUMCOV_SD
 TMatrixT<double> m_PDF_CORR

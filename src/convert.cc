@@ -80,10 +80,10 @@ int main(int argc, char* argv[]) {
     const char* label = ax->GetBinLabel(i);
     std::string var(label,strchr(label,' ')-label);
 
-    auto it = std::find_if(n_var_bins.begin(), n_var_bins.end(),
+    auto it = std::find_if(n_var_bins.rbegin(), n_var_bins.rend(),
       [&](const auto& p){ return p.first == var; }
     );
-    if (it==n_var_bins.end()) n_var_bins.emplace_back(std::move(var),1);
+    if (it==n_var_bins.rend()) n_var_bins.emplace_back(std::move(var),1);
     else ++it->second;
   }
 
