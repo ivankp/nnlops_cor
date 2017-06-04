@@ -19,7 +19,8 @@
 #include "binner.hh"
 #include "mat.hh"
 #include "mapper.hh"
-#include "cstr.hh"
+#include "string.hh"
+#include "comprehension.hh"
 
 #define TEST(var) \
   std::cout <<"\033[36m"<< #var <<"\033[0m"<< " = " << var << std::endl;
@@ -318,7 +319,7 @@ int main(int argc, char* argv[]) {
       i2 += w.GetSize();
       std::string name(w.GetBranchName()+2);
 
-      if (name.find("qcd")!=std::string::npos) { // QCD weights
+      if (starts_with(name,"qcd")) { // QCD weights
 
         // QCD envelope histograms
         th1(h,[=](const hist_bin& b){ return b.min(i1,i2); },
@@ -356,6 +357,11 @@ int main(int argc, char* argv[]) {
   f.cd(); // cd back to the file
   f.mkdir("error_sources")->cd();
 
+  th1(all_bins | [](const auto& v){ return v[0]; },
+    "nominal_xsec", "Nominal cross section",
+    [&](unsigned i){ return all_bin_labels.at(i-1); }
+  );
+
   std::vector<sym_mat<double>> big_cov;
   big_cov.reserve(_weights.size());
 
@@ -364,7 +370,7 @@ int main(int argc, char* argv[]) {
     i2 += w.GetSize();
     std::string name(w.GetBranchName()+2);
 
-    if (starts_with(name.c_str(),"qcd_")) { // QCD weights
+    if (starts_with(name,"qcd_")) { // QCD weights
 
       // Symmetrized QCD uncertainties
       std::vector<double> symm_err(all_bins.size(),0.);

@@ -56,6 +56,7 @@ struct is_std_vector<std::vector<T,Alloc>>: std::true_type { };
 #endif
 
 // Tuple ************************************************************
+#ifdef _GLIBCXX_TUPLE
 
 // make_subtuple
 template <typename Tuple, size_t... I>
@@ -117,6 +118,8 @@ public:
 template <typename T, size_t N>
 using tuple_of_same_t = typename tuple_of_same<T,N>::type;
 
+#endif
+
 // Expression traits ************************************************
 
 // void_t technique from Walter Brown
@@ -165,19 +168,26 @@ struct has_minus_eq<T,R,
   void_t<decltype( std::declval<T&>()-=std::declval<R>() )>
 > : std::true_type { };
 
-template <typename T, typename... Args> // x(args...)
-class is_callable {
-  template <typename, typename = void>
-  struct impl: std::false_type { };
-  template <typename U>
-  struct impl<U,
-    void_t<decltype( std::declval<U&>()(std::declval<Args>()...) )>
-  > : std::true_type { };
-public:
-  static constexpr bool value = impl<T>::value;
-};
+#define MEMBER_FCN_TRAIT(NAME,FCN) \
+  template <typename T, typename... Args> \
+  class NAME { \
+    template <typename, typename = void> struct impl: std::false_type { }; \
+    template <typename U> struct impl<U, \
+      void_t<decltype( std::declval<U&>().FCN(std::declval<Args>()...) )> \
+    >: std::true_type { }; \
+  public: \
+    static constexpr bool value = impl<T>::value; \
+  };
+
+MEMBER_FCN_TRAIT(is_callable,operator())
+MEMBER_FCN_TRAIT(is_indexable,operator[])
+MEMBER_FCN_TRAIT(has_mf_at,at)
 
 // ******************************************************************
+
+enum class enabler_t {};
+template <bool B>
+using auto_enable_if_t = typename std::enable_if<B,enabler_t>::type;
 
 } // end namespace ivanp
 

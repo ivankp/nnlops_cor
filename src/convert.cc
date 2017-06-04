@@ -10,7 +10,7 @@
 #include <TAxis.h>
 
 #include "catstr.hh"
-#include "cstr.hh"
+#include "string.hh"
 
 using std::cout;
 using std::cerr;

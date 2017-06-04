@@ -1,29 +1,59 @@
+STD := -std=c++14
+DF := $(STD) -Iinclude
+CF := $(STD) -Wall -Iinclude
+LF := $(STD)
+
+ifeq (0, $(words $(findstring $(MAKECMDGOALS), rel)))
+# development mode
+CF += -O2 -g -fmax-errors=3
+else
+# release mode
+CF += -O3 -flto -funroll-loops -march=native
+LF += -flto
+endif
+
 ROOT_CFLAGS := -Wno-deprecated-declarations -pthread -m64
 ROOT_CFLAGS += -I$(shell root-config --incdir)
 ROOT_LIBS   := $(shell root-config --libs)
 
-.PHONY: all clean
+CF += $(ROOT_CFLAGS)
+LF += $(ROOT_LIBS)
 
-EXE := cor convert test_hist test_cov
+L_cor := -lTreePlayer
+L_test_hist := -lTreePlayer
 
-BINNER_DEP := axis.hh binner.hh default_bin_filler.hh exception.hh \
-	      sequence_traits.hh type_traits.hh utility.hh
+SRC := src
+BIN := bin
+BLD := .build
 
-all: cor convert
-tests: test_hist test_cov
+SRCS := $(shell find $(SRC) -type f -name '*.cc')
+DEPS := $(patsubst $(SRC)%.cc,$(BLD)%.d,$(SRCS))
 
-cor: include/mat.hh include/mapper.hh include/catstr.hh \
-     include/timed_counter.hh $(BINNER_DEP:%=include/%)
-convert: include/catstr.hh
-test_cov: include/mat.hh include/timed_counter.hh
-test_hist: include/timed_counter.hh
+GREP_EXES := grep -rl '^ *int \+main *(' $(SRC)
+EXES := $(patsubst $(SRC)%.cc,$(BIN)%,$(filter %.cc,$(shell $(GREP_EXES))))
 
-$(EXE): %: src/%.cc
-	$(CXX) -std=c++14 -Wall -O3 -flto -Iinclude -fmax-errors=3 \
-	  $(ROOT_CFLAGS) \
-	  $(filter %.cc,$^) -o $@ \
-	  $(ROOT_LIBS) -lTreePlayer
+NODEPS := clean
+.PHONY: all rel clean
+
+all: $(EXES)
+rel: $(EXES)
+
+#Don't create dependencies when we're cleaning, for instance
+ifeq (0, $(words $(findstring $(MAKECMDGOALS), $(NODEPS))))
+-include $(DEPS)
+endif
+
+$(DEPS): $(BLD)/%.d: $(SRC)/%.cc | $(BLD)
+	$(CXX) $(DF) -MM -MT '$(@:.d=.o)' $< -MF $@
+
+$(BLD)/%.o: | $(BLD)
+	$(CXX) $(CF) $(C_$*) -c $(filter %.cc,$^) -o $@
+
+$(EXES): $(BIN)/%: $(BLD)/%.o | $(BIN)
+	$(CXX) $(LF) $(filter %.o,$^) -o $@ $(L_$*)
+
+$(BLD) $(BIN):
+	mkdir $@
 
 clean:
-	@rm -fv $(EXE)
-
+	@rm -rfv $(BLD) $(BIN)

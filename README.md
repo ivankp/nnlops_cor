@@ -1,7 +1,7 @@
 Compilation: `make`
 
 Produce correlation matrices and error histograms:
-`./cor output.root input1.root ...`
+`./bin/cor output.root input1.root ...`
 
 `cor` creates a root file with a lot of things in it and `TH2D`s for matrices.
 
@@ -16,7 +16,8 @@ TH1I varName_and_Nbins
 
 Usage example:
 ```
-./cor nnlops_correlations.root user*.root
-./convert nnlops_correlations.root theory_unc.root pdf4lhc_unc ggf_qcd_2017
+./bin/cor nnlops_correlations.root user*.root
+./bin/convert nnlops_correlations.root theory_unc.root pdf4lhc_unc ggf_qcd_2017
+./bin/plot nnlops_correlations.root nnlops_errors.pdf
 ```
 
